@@ -214,12 +214,25 @@ python tools\fix_failed_renders_args.py             # 实际修改（自动备�
 
 ## 五、遗留的坑（原版就有，未修改）
 
-1. **`dm_filter.dm_type` 默认只收纯弹幕**，礼物/进场弹幕会被过滤掉。
-   所以 `dm_template.gift` 配了也不会生效。想收礼物弹幕要显式设置：
+1. **`dm_filter.dm_type` 默认只收纯弹幕** —— 这个坑本魔改版已经填了。
+   代码 `DMR/Downloader/Danmaku/danmaku.py:130`：
+   ```python
+   dm_type = self.dm_filter.get('dm_type') or 'danmaku'
+   ```
+   留空（`~`）等于只收纯文字弹幕，**礼物弹幕会在进入 `dm_template` 之前就被丢掉**，
+   所以 `dm_template.gift` 配了也不生效。
+
+   本魔改版设置为 **只收弹幕 + 礼物，不要进场**：
    ```yaml
    dm_filter:
-     dm_type: gift          # 或 all / [danmaku, gift]
+     dm_type: [danmaku, gift]     # all = 什么都收（含 entry 进场，会刷屏）
    ```
+   实测：纯弹幕 ✓收 / 礼物 ✓收 / 进场 ✗过滤 / 超级弹幕 ✗过滤
+
+   验证脚本：`python tools\test_dm_type.py`
+
+   > ⚠️ 注意：原版 `F:\123Pan_DanmakuRender` 那边用的是 `dm_type: all`，
+   > 会把 entry（进场）也一起收进去，比魔改版多。两边故意不同，别搞混。
 2. **B站 cookie 过期后不会提示**，表现为上传一直失败。cookie 在 `./login_info/bilibili.json`。
 3. **`.temp/failed_uploads.json` 里的失败上传不会自动重试**，需要去 WebUI 手动点重试。
 4. **失败任务列表没有时间戳**，程序重启后这些任务的状态仍然显示为 `rendering`，

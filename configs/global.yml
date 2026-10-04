@@ -157,8 +157,15 @@ download_args:
     dm_filter:
       # 弹幕类型过滤，只获取指定类型的弹幕，支持情况请参考文档
       # 可选值：all（所有）, danmaku（纯弹幕）, gift（礼物信息）, entry（进场信息）, superchat（超级弹幕）
-      # 默认只获取文字弹幕(danmaku)
-      dm_type: ~
+      #
+      # ⚠️ 这里留空（~）等于只收 danmaku（纯文字弹幕）！
+      #   代码位置 DMR/Downloader/Danmaku/danmaku.py:130
+      #       dm_type = self.dm_filter.get('dm_type') or 'danmaku'
+      #   所以 dm_type 为空时，礼物弹幕会在**进入 dm_template 之前**就被丢掉，
+      #   下面 dm_template.gift 配得再好也不会生效。
+      #
+      # 当前设置：只收 纯弹幕 + 礼物，不要进场/超级弹幕（进场消息太多，会刷屏）
+      dm_type: [danmaku, gift]
       # 关键字过滤，只要有关键字的弹幕都会被过滤
       # 例如：[菜, fw]
       keywords: ~
