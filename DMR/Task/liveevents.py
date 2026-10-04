@@ -123,11 +123,13 @@ class LiveEvents(BaseEvents):
 
         if self.config['common_event_args'].get('auto_upload'):
             ret_msgs += self._check_for_upload(video.group_id, len(self.state_dict[video.group_id])-1)
-            # 如果有文件命中「跳过上传」规则，它不会产生 onUploadEnd 事件，
-            # 这里补一次清理检查，否则原视频不会被删除
-            if self.config['common_event_args'].get('auto_clean'):
-                ret_msgs += self._check_for_clean(video.group_id)
-                
+
+        # ⚠️⚠️ 这里**故意不调用** _check_for_clean！
+        # 此刻 dm_video 还是 'rendering'、渲染进程正在读原视频。
+        # 如果在这里清理，就会边渲染边删掉输入文件 —— 渲染必然失败，
+        # 而且原文件已经不可恢复（2026-10-05 真实事故）。
+        # 原视频的清理统一交给 onRenderEnd（弹幕版渲染完成）触发。
+
         return ret_msgs
     
     def onLiveEnd(self, message:PipeMessage):
@@ -380,6 +382,37 @@ class LiveEvents(BaseEvents):
                     # 会停在 upload_skipped 状态，**永远清理不掉**（原视频会一直堆积）。
                     if info['status'] not in ('ready', 'upload_skipped'):
                         continue
+
+                    # ⚠️⚠️ 第二道保护：只要这个文件还有没跑完的异步任务，就先不动它。
+                    # wait 非空 = 有 render/upload 任务在排队或执行中，
+                    # 这时候删文件可能正好删掉别人正在读的输入（2026-10-05 事故）。
+                    if info.get('wait'):
+                        self.logger.debug(
+                            f'{self.name}: {vtype} 暂不清理 —— 还有 {len(info["wait"])} 个任务未完成'
+                        )
+                        continue
+
+                    # ⚠️⚠️ 第三道保护：原视频 / 转码前文件是"下游任务的输入"，
+                    # 只要下游还在**读取**它，就绝对不能删 —— 否则会边渲染边删输入，
+                    # 渲染必然失败且原文件救不回来（2026-10-05 事故根因）。
+                    #   src_video      的读取者 = dm_video（弹幕版渲染）
+                    #   src_video_pre  的读取者 = src_video（转码）
+                    # 注意只挡 'rendering'，**不挡 'uploading'**：
+                    #   上传是在读取 dm_video（另一个文件），不影响原视频，
+                    #   而且 _check_for_upload 只是把任务投递出去就返回了、不会等结果。
+                    #   挡 uploading 会导致原视频要等上传完成才删，违背"渲染完立即删"的要求。
+                    if vtype in ('src_video', 'src_video_pre'):
+                        consumers = ('dm_video',) if vtype == 'src_video' else ('src_video',)
+                        still_reading = [
+                            c for c in consumers
+                            if c in video_state
+                            and video_state[c].get('status') == 'rendering'
+                        ]
+                        if still_reading:
+                            self.logger.debug(
+                                f'{self.name}: {vtype} 暂不清理 —— 下游 {still_reading} 正在读取它'
+                            )
+                            continue
 
                     file_handled = False
                     for clean_file_types, clean_arg in clean_args.items():
