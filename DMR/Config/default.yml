@@ -344,83 +344,16 @@ upload_args:
     no_reprint: 1
     # 是否开启充电? 0-关闭 1-开启
     open_elec: 1
-  
-  # 上传到YouTube
-  # 此功能使用较复杂，细节请参考文档
-  youtube:
-    # 上传引擎，目前只支持youtubev3 (Google API v3 for Youtube)
-    engine: youtubev3
-    # 应用程序密钥路径
-    client_secrets: .login_info/client.json
-    # Google账号名称
-    # 也可以直接指向已授权的Oauth2文件路径
-    account: .login_info/google-oauth2.json
-    # Google账号验证选项
-    # 例如：在服务器上无GUI验证时，应设置为['--noauth_local_webserver']
-    credential_args: ~
-    # 重试次数，如果上传遇到错误将会重试，设置为0表示不重试
-    # 特别提示：此重试会完全重传视频并消耗API配额（除非由于配额不够失败），需要断点续传请设置下面的参数
-    retry: 0
-    # 断点续传次数，此次数为单次上传中断点续传的次数，设置为0表示无限续传，直到上传完成或者API返回错误
-    # 强烈建议设置无限续传，否则完全重传需要消耗API配额，并且未上传成功的视频需要自己到YouTube页面删除
-    retry_resume: 0
-    # 上传超时时间（秒），如果上传时间超过这个时间将会被强制终止（用于防止卡死），0表示不限制
-    timeout: 0
-    # 实时上传（边录边传），每录制一个分段上传一次，youtube默认关闭
-    realtime: False
-    # 是否合并视频
-    # 如果设置为True，那么会把所有分段视频合并成一个视频再上传，默认True
-    # 使用实时上传时此功能不生效
-    # 强烈建议关闭实时上传，并启动合并视频再上传，因为YouTube API默认每天只能上传6个视频
-    # 使用此功能请确保延迟下播时间设置较短，否则不同分辨率的视频合并会导致上传失败
-    concat_video: True
-    # 上传的视频最短长度，小于此长度的视频会被自动过滤，默认120s
-    min_length: 120
-    # 以下参数来自Google API，部分选项请参考 https://developers.google.com/youtube/v3/docs/videos/insert
-    # 标题，可以使用关键字替换
-    # 默认的例子：[飞天狙想要努力变胖/直播回放] 晚上七点半比赛 2023年2月24日 （带弹幕版）
-    title: '[{STREAMER.NAME}/直播回放] {TITLE} {CTIME.YEAR}年{CTIME.MONTH:02d}月{CTIME.DAY:02d}日'
-    # 简介，可以使用关键字替换
-    desc: |
-      {STREAMER.NAME} 的直播回放
-      标题：{TITLE} 
-      时间：{CTIME.YEAR}年{CTIME.MONTH:02d}月{CTIME.DAY:02d}日
-      直播地址：{STREAMER.URL} 
 
-      ————————————
-      由DanmakuRender录制：
-      https://github.com/SmallPeaches/DanmakuRender
-    # 视频标签，多个标签逗号分割，例如：'直播回放,ABC'
-    # Youtube的视频标签可以为空
-    tag: ~
-    # 视频分区编号，默认20（游戏）
-    # 请参考 https://developers.google.com/youtube/v3/docs/videoCategories/list?hl=zh-cn
-    # 或者 https://gist.github.com/dgp/1b24bf2961521bd75d6c
-    category: 20
-    # 延迟发布（秒）（此功能暂不可用）
-    # 延迟时间从上传启动时开始计算，使用延迟上传时privacy固定为private
-    dtime: 0
-    # 隐私设置，可选：public（公开）, unlisted（未列出）, private（私有），默认public
-    privacy: public
-    # 完全自定义上传请求（https://developers.google.com/youtube/v3/docs/videos/insert?hl=zh-cn#request-body）
-    # 应设置为json格式字符串，可使用关键字替换
-    raw_upload_body: ~
-
-  # 完全自定义上传
-  # 调用的上传程序应该在上传成功后返回0，失败返回非0，并将错误信息输出到stderr
-  # 具体说明请参考GitHub文档
-  custom:
-    # 上传引擎，目前只支持子进程调用
+  # 上传到网盘（rclone 子进程）
+  # 本魔改版用 rclone 替代了官方的 YouTube 上传，并合并了官方的 custom（完全自定义）上传
+  # 详细说明见 configs/global.yml 里的 upload_args.rclone 段
+  rclone:
     engine: subprocess
-    # 重试次数，如果上传遇到错误将会重试，设置为0表示不重试
-    # 注意：重试会整个视频重传，并且阻塞后面视频的上传，不应该设置太大
     retry: 3
-    # 上传超时时间（秒），如果上传时间超过这个时间将会被强制终止（用于防止卡死），0表示不限制
     timeout: 0
-    # 上传的视频最短长度，小于此长度的视频会被自动过滤，默认120s
-    min_length: 120
-    # 上传命令行参数，可以使用关键字替换
-    # 为保证安全调用，请使用参数列表的形式，例如：['python', 'upload.py', '{PATH}']
+    realtime: False
+    min_length: 0
     command: ~
 
 # 清理器核心参数

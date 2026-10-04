@@ -78,3 +78,33 @@ class FFprobe():
             return resolution
         except:
             return 0,0
+
+    @classmethod
+    def get_fps(cls, url:str, header=None, fallback:float=0.0) -> float:
+        """获取视频帧率（浮点数）。
+
+        优先使用 r_frame_rate（真实基础帧率），失败时回退到 avg_frame_rate。
+        获取不到时返回 fallback（默认 0，调用方需要自己决定兜底值）。
+        """
+        try:
+            if str(url).startswith('http'):
+                res = cls.run_ffprobe_livestream(url, header)
+            else:
+                res = cls.run_ffprobe(url)
+            stream = res['streams'][0]
+
+            for key in ('r_frame_rate', 'avg_frame_rate'):
+                rate = stream.get(key)
+                if not rate or rate in ('0/0', '0'): 
+                    continue
+                num, _, den = str(rate).partition('/')
+                den = den or '1'
+                try:
+                    fps = float(num) / float(den)
+                except (ZeroDivisionError, ValueError):
+                    continue
+                if fps > 0:
+                    return fps
+        except Exception:
+            pass
+        return fallback

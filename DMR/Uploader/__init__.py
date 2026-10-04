@@ -199,12 +199,10 @@ class Uploader():
                         from .biliuprs import biliuprs as TargetUploader
                     elif engine == 'subprocess':
                         from .subprocess_uploader import SubprocessUploader as TargetUploader
-                    elif engine == 'youtubev3':
-                        from .youtubev3 import youtubev3 as TargetUploader
                     elif engine == 'biliwebapi':
                         from .biliwebapi import BiliWebApi as TargetUploader
                     else:
-                        raise ValueError(f'Unknown engine: {engine}')
+                        raise ValueError(f'Unknown engine: {engine} (本魔改版已移除 youtubev3，网盘请使用 subprocess)')
                     
                     target_uploader = TargetUploader(**upload_args)
                     self._uploader_pool[upload_group] = {

@@ -160,6 +160,16 @@ class StreamDownloadTask():
         
         stream_url = self.liveapi.GetStreamURL(**self.stream_option)
         stream_request_header = self.liveapi.GetStreamHeader()
+
+        # 抖音接口在风控/限流/房间状态异常时返回的结构里没有 stream_url，
+        # GetStreamURL() 会返回 None。原来这里直接往下走，会在下面
+        # `'.m3u8' in stream_url` 处抛 TypeError: argument of type 'NoneType' is not iterable，
+        # 报错信息毫无指向性（历史日志里出现过 26 次，每次都白丢一段录制）。
+        # 这里提前判断，抛出能看懂的错误，交给上层的重连退避逻辑处理。
+        if not stream_url:
+            raise RuntimeError(f'{self.taskname}: 获取直播流地址失败（GetStreamURL 返回 {stream_url!r}），'
+                               f'通常是平台风控/限流或直播间状态异常，稍后会自动重试。')
+
         width, height = FFprobe.get_resolution(stream_url, stream_request_header)
         # 斗鱼和虎牙的直播地址只能用一次，所以要重新获取
         if self.plat == 'douyu' or self.plat == 'huya':
@@ -167,12 +177,13 @@ class StreamDownloadTask():
 
         this_engine = self.engine
         if this_engine == 'auto':
+            stream_url_str = str(stream_url)
             # B站规则：带有bluray的hls流使用pyrequests，普通的hls流使用ffmpeg，flv流使用streamgears
             if self.plat == 'bilibili':
-                if re.search(r'live_\d+_[a-zA-Z_]{0,10}\d+_[a-zA-Z]{1,10}', stream_url)\
-                    and '.m3u8' in stream_url:
+                if re.search(r'live_\d+_[a-zA-Z_]{0,10}\d+_[a-zA-Z]{1,10}', stream_url_str)\
+                    and '.m3u8' in stream_url_str:
                     this_engine = 'ffmpeg'          # pyrequests强制原画可用率不高，改回ffmpeg
-                elif '.m3u8' in stream_url:
+                elif '.m3u8' in stream_url_str:
                     this_engine = 'ffmpeg'
                 else:
                     this_engine = 'streamgears'
@@ -181,7 +192,7 @@ class StreamDownloadTask():
             #     this_engine = 'ffmpeg'
             # 其他原生支持的平台hls流使用ffmpeg，flv流使用streamgears
             elif self.plat in ['huya', 'douyu', 'douyin', 'cc']:
-                if '.m3u8' in stream_url:
+                if '.m3u8' in stream_url_str:
                     this_engine = 'ffmpeg'
                 else:
                     this_engine = 'streamgears'

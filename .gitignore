@@ -1,9 +1,20 @@
 /.**
+
+# 上面的 /.** 会连 .gitignore / .dockerignore 自己一起忽略掉（导致它们无法被提交），
+# 这里用 ! 显式豁免回来。注意顺序：必须放在 /.** 之后才生效。
+!/.gitignore
+!/.dockerignore
+
 /直播回放**
 /logs/
 /venv/
 /test**
+/视频下载**
 输出/
+
+# 敏感信息：绝对不要提交到 GitHub
+rclone.conf
+.login_info/
 
 *.7z
 replay-**.yml

@@ -142,6 +142,13 @@ class LiveEvents(BaseEvents):
             upload_msgs = self._check_for_upload(group_id)
             ret_msgs += upload_msgs
 
+        # 本地存档场景（不启用上传）：直播结束时再做一次清理兜底
+        # 防止某些分段在渲染完成时因 dm_video 尚未 ready 而未触发清理的情况
+        if self.config['common_event_args'].get('auto_clean') \
+                and not self.config['common_event_args'].get('auto_upload'):
+            clean_msgs = self._check_for_clean(group_id)
+            ret_msgs += clean_msgs
+
         self._free_state_memory()
         
         return ret_msgs
@@ -211,6 +218,13 @@ class LiveEvents(BaseEvents):
                             if arg.get('realtime'):
                                 continue
                             up_videos = [video for video in videos if video.duration >= arg.get('min_length', 0)]
+                            # 全部视频都短于 min_length 时必须跳过，否则下面 up_videos[0] 会抛 IndexError，
+                            # 整个上传流程会中断（原版就有这个隐患）
+                            if not up_videos:
+                                self.logger.info(
+                                    f'视频组 {group_id} 的 {vtype} 全部短于 {arg.get("min_length", 0)}s，跳过上传.'
+                                )
+                                continue
                             upload_group_id = up_videos[0].upload_group_id if hasattr(up_videos[0], 'upload_group_id') else group_id
                             upload_msg = PipeMessage(
                                 source=self.name,
@@ -253,45 +267,90 @@ class LiveEvents(BaseEvents):
             upload_msgs = self._check_for_upload(video.group_id)
             ret_msgs += upload_msgs
 
+        # 如果启用了自动清理，即使不启用上传，在渲染完成后也尝试触发清理
+        # 这样本地存档场景下，渲染完弹幕版后就能立即删除原视频和弹幕文件
+        if self.config['common_event_args'].get('auto_clean'):
+            clean_msgs = self._check_for_clean(video.group_id)
+            ret_msgs += clean_msgs
+
         return ret_msgs
     
     def _check_for_clean(self, group_id=None):
         ret_msgs = []
         clean_args = self.config['clean_args']
-        for group_id, video_states in self.state_dict.items():
+        if not clean_args:
+            return ret_msgs
+
+        auto_upload_enabled = self.config['common_event_args'].get('auto_upload', False)
+
+        # 如果传入了 group_id，只处理指定组；否则处理所有组
+        iter_groups = [(group_id, self.state_dict[group_id])] \
+            if group_id and group_id in self.state_dict \
+            else list(self.state_dict.items())
+
+        for _gid, video_states in iter_groups:
             for idx, video_state in enumerate(video_states):
                 for vtype, info in video_state.items():
-                    if info['status'] != 'uploaded':
-                        continue
+                    # 判断当前状态是否满足清理条件
+                    # 启用上传：必须 uploaded 才清理
+                    # 不启用上传：ready 就可以清理（本地存档场景）
+                    if auto_upload_enabled:
+                        if info['status'] != 'uploaded':
+                            continue
+                    else:
+                        if info['status'] != 'ready':
+                            continue
+
+                    file_handled = False
                     for clean_file_types, clean_arg in clean_args.items():
-                        # 判断当前视频是否需要清理
-                        if vtype in clean_file_types.split('+') or clean_file_types == 'all':
-                            for arg in clean_arg:
-                                files = [info['file']]
-                                # 判断是否需要清理源文件
-                                if vtype == 'dm_video' and arg.get('w_srcfile', False) == True and video_state['src_video']['file'] is not None:
-                                    files.append(video_state['src_video']['file'])
-                                    self.state_dict[group_id][idx]['src_video']['status'] = 'cleaned'
-                                # 判断是否需要清理源文件（转码前）
-                                if vtype == 'src_video' and arg.get('w_srcpre', True) == True and video_state['src_video_pre']['file'] is not None:
-                                    files.append(video_state['src_video_pre']['file'])
-                                    self.state_dict[group_id][idx]['src_video_pre']['status'] = 'cleaned'
-                                
-                                clean_msg = PipeMessage(
-                                    source=self.name,
-                                    target='cleaner',
-                                    event='newtask',
-                                    request_id=uuid(),
-                                    data={
-                                        'taskname': self.name,
-                                        'files': files,
-                                        'method': arg['method'],
-                                        'delay': arg['delay'],
-                                        'args': arg,
-                                    }
-                                )
-                                ret_msgs.append(clean_msg)
-                    self.state_dict[group_id][idx][vtype]['status'] = 'cleaned'
+                        # 判断当前视频类型是否需要清理
+                        if vtype not in clean_file_types.split('+') and clean_file_types != 'all':
+                            continue
+
+                        file_handled = True
+
+                        # 兼容两种 YAML 写法：
+                        #   列表式（推荐）: src_video: [{method: delete, delay: 0}, ...]
+                        #   对象式（简写）  : src_video: {method: delete, delay: 0}
+                        if isinstance(clean_arg, list):
+                            arg_iter = clean_arg
+                        elif isinstance(clean_arg, dict):
+                            arg_iter = [clean_arg]
+                        else:
+                            continue
+
+                        for arg in arg_iter:
+                            files = [info['file']]
+                            # 判断是否需要连带清理源文件（dm_video → src_video + 弹幕）
+                            if vtype == 'dm_video' and arg.get('w_srcfile', False) == True \
+                                    and video_state['src_video']['file'] is not None \
+                                    and video_state['src_video']['status'] != 'cleaned':
+                                files.append(video_state['src_video']['file'])
+                                video_state['src_video']['status'] = 'cleaned'
+                            # 判断是否需要连带清理转码前源文件
+                            if vtype == 'src_video' and arg.get('w_srcpre', True) == True \
+                                    and video_state['src_video_pre']['file'] is not None \
+                                    and video_state['src_video_pre']['status'] != 'cleaned':
+                                files.append(video_state['src_video_pre']['file'])
+                                video_state['src_video_pre']['status'] = 'cleaned'
+
+                            clean_msg = PipeMessage(
+                                source=self.name,
+                                target='cleaner',
+                                event='newtask',
+                                request_id=uuid(),
+                                data={
+                                    'taskname': self.name,
+                                    'files': files,
+                                    'method': arg['method'],
+                                    'delay': arg['delay'],
+                                    'args': arg,
+                                }
+                            )
+                            ret_msgs.append(clean_msg)
+
+                    if file_handled:
+                        video_state[vtype]['status'] = 'cleaned'
 
         return ret_msgs
     

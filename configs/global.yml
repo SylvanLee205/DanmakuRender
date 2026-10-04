@@ -11,11 +11,11 @@ executable_tools_path:
 # DMR引擎参数
 dmr_engine_args: 
   # 选择组件
-  # 可选组件： downloader（下载器）, render（渲染器）, uploader（上传器）, cleaner（清理器），webservice（WebUI服务，默认不启用）
   enabled_plugins: ['downloader', 'render', 'uploader', 'cleaner']
-  # 配置文件路径
-  # 可设置为文件/文件夹列表
-  config_path: ./configs
+  # 是否动态更新配置文件
+  dynamic_config: True
+  # 动态更新的配置文件路径
+  dynamic_config_path: ./configs
 
 # 默认下载参数
 download_args:
@@ -42,7 +42,7 @@ download_args:
     # 录播分段时间（秒），默认一个小时
     segment: 3600
     # 录制视频的格式，默认flv
-    output_format: flv
+    output_format: mkv
     # 是否录制弹幕
     danmaku: True
     # 是否录制直播流
@@ -56,7 +56,6 @@ download_args:
       # 直播流CDN
       # 对于虎牙直播，此项可选al, tx, hw等cdn服务器的缩写
       # 对于B站，可选特定的CDN域名前缀，例如：c1--cn-gotcha208
-      # 斗鱼可选 hs-h5 或者默认 (https://github.com/SmallPeaches/DanmakuRender/issues/506)
       # 或者正则匹配特定CDN，例如：.*cn-gotcha.*
       # 默认为空，由程序随机选择可用cdn
       stream_cdn: ~
@@ -68,8 +67,6 @@ download_args:
       # B站观看cookies，用于获取直播流，如果不填写则使用登录B站上传视频的cookies
       # 如果希望不登录录制最低画质，请设置为'None'
       bili_watch_cookies: .login_info/bili_watch_cookies.json
-      # 虎牙使用mobile api获取流(https://github.com/SmallPeaches/DanmakuRender/issues/490#issuecomment-3322342040)
-      huya_mobile_api: False
     # 高级视频录制参数
     # 请确保你明白这些参数的含义后再修改
     advanced_video_args: 
@@ -96,14 +93,22 @@ download_args:
       # 使用B站强制原画功能，仅适用于pyrequests引擎下的hls流
       bili_force_origin: True
       # ffmpeg取流参数(仅ffmpeg下载引擎生效)
-      ffmpeg_stream_args: [ '-rw_timeout','10000000',
-                            '-analyzeduration','15000000',
-                            '-probesize','50000000',
-                            '-thread_queue_size', '16']
+      ffmpeg_stream_args: [
+        '-rw_timeout', '20000000',       # 20秒超时
+        '-analyzeduration', '20000000',
+        '-probesize', '50000000',
+        '-thread_queue_size', '1024',    # 队列给大点
+        '-reconnect', '1',
+        '-reconnect_streamed', '1',
+        '-reconnect_delay_max', '30',
+        # 必须伪装 User-Agent，否则抖音服务器可能会断开连接
+        '-user_agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      ]                      
       # ffmpeg输出参数(仅ffmpeg下载引擎生效)
-      ffmpeg_output_args: [ '-movflags','faststart+frag_keyframe+empty_moov']
+      #ffmpeg_output_args: [ '-movflags','faststart+frag_keyframe+empty_moov' ]
+      ffmpeg_output_args: [ '-c', 'copy' ]
       # 禁用下载速度慢时自动重启(仅ffmpeg下载引擎生效)
-      disable_lowspeed_interrupt: false
+      disable_lowspeed_interrupt: true
       # streamlink画质选项（默认best）
       streamlink_quality: ~
       # streamlink 额外输入参数
@@ -117,34 +122,36 @@ download_args:
     # 弹幕录制格式，只能选择ass
     dm_format: ass 
     # 弹幕上下间距（行距），设置为0-1的表示为视频宽度的倍数，设置为大于1的数表示像素，默认6
-    margin_h: 6
+    margin_h: 2
     # 弹幕左右间距，设置为-1表示允许弹幕叠加，设置为0-1的表示间距为视频宽度的倍数，设置为大于1的数表示像素，默认0.05
     # 实际上这个东西就是弹幕密度，弹幕左右间距越大密度越小
-    margin_w: 0.05
+    margin_w: 0.14
     # 指定弹幕占屏幕的最大比例（即屏幕上半部分有多少可以用来显示弹幕），默认为0.4
-    dmrate: 0.4
+    dmrate: 0.2
     # 指定弹幕字体，默认为微软雅黑字体(Microsoft YaHei)
-    font: Microsoft YaHei
+    #font: Microsoft YaHei
+    font: Source Han Sans SC
     # 指定弹幕字体大小，默认为36
-    fontsize: 36
+    fontsize: 30
     # Distance from Screen Top 弹幕距离屏幕顶端的距离（像素，例如20，表示距离屏幕顶端20px）
-    dst: 20
+    dst: 12
     # 指定单条弹幕持续时间（秒），默认为16
-    dmduration: 16
+    dmduration: 12
     # 指定弹幕不透明度，默认为0.8
-    opacity: 0.8
+    opacity: 0.84
     # 使用自适应弹幕大小（会让把设置的弹幕大小按1080P标准缩放）
     auto_fontsize: True
     # 弹幕描边颜色(6位十六进制)
-    outlinecolor: 000000
+    outlinecolor: 222222
     # 弹幕描边宽度
-    outlinesize: 1.0
+    outlinesize: 0.44
     # 弹幕流选项
     dm_stream_option:
       # 用于获取抖音弹幕流的cookies，用于特殊情况下录制抖音弹幕(https://github.com/SmallPeaches/DanmakuRender/issues/258)
       # 格式：'__ac_nonce=xxx; __ac_signature=xxx; sessionid=xxx'
       # 特别提醒，使用此方法传入参数会在日志文件中明文显示，如果需要共享日志文件请确保删除了敏感信息！
       # 推荐设置为cookies所在的json文件，这样cookies就不会明文显示，json文件应该为cookies字典：{'__ac_nonce': xxx, ...}
+      #douyin_dm_cookies: .login_info/douyin_cookies.json
       douyin_dm_cookies: ~
     # 弹幕过滤规则，满足其中任意条件的弹幕将被过滤
     dm_filter:
@@ -163,9 +170,9 @@ download_args:
     # 弹幕模板，具体使用请参考文档
     dm_template:
       # 不同类型弹幕的模板
-      danmaku: ~
+      danmaku: '{UNAME}: {CONTENT}'
       superchat: ~
-      gift: ~
+      gift: '{uname} 赠送给主播价值 {price} {price_unit} 的 {gift_count} 个 {gift_name}'
       entry: ~
     # 高级弹幕录制参数
     # 请确保你明白这些参数的含义后再修改
@@ -174,7 +181,7 @@ download_args:
       # 也可以设置为负数延后弹幕
       dm_delay_fixed: 6
       # 弹幕超时自动重启（秒），超过一段时间无弹幕会自动重启弹幕录制，0表示关闭
-      dm_auto_restart: 300
+      dm_auto_restart: 600
       # 额外弹幕流输入
       # 部分主播可能同时在平台同时开播，可以用这个同时录制多个直播间的弹幕到一个视频
       # 应该设置为一个列表（不包括原来录制的房间），例如：['https://live.bilibili.com/123456', 'https://live.bilibili.com/654321']
@@ -234,7 +241,7 @@ download_args:
     # 此参数将直接传入下载引擎，可以用来设置一些特殊的下载参数
     extra_args: []
   
-  # 虚拟下载
+  # 虚拟下载（此功能暂不可用）
   # 可以监控文件夹中的视频文件，用于和其他软件协同，详情请参考文档
   virtual:
     # 监控文件夹
@@ -293,24 +300,47 @@ render_args:
     # 生成的视频文件格式，默认mp4
     format: mp4
     # 硬件解码参数，默认由FFmpeg自动判断，如果出现问题可以设为空
-    hwaccel_args: [-hwaccel, auto]
+    hwaccel_args: ~
+    #['-hwaccel', 'qsv','-hwaccel_output_format', 'qsv']
     # 视频编码器，NVIDIA设置为h264_nvenc，AMD设置为h264_amf，Apple用户设置为h264_videotoolbox，CPU设置为libx264
-    vencoder: h264_nvenc
+    vencoder: av1_qsv
     # 视频编码器参数，默认恒定码率15Mbps
-    vencoder_args: [-b:v, 15M]
+    vencoder_args: [
+      '-preset', 'veryslow',
+      '-global_quality:v', '29',
+      #'-extbrc', '1',
+      #'-look_ahead_depth', '40',
+      '-tag:v', 'av01',
+      '-movflags', '+faststart'
+    ]
     # 音频编码器
-    aencoder: aac
+    aencoder: libopus
     # 音频编码器参数，默认恒定码率320Kbps
-    aencoder_args: [-b:a, 320K]
+    aencoder_args: [
+      '-b:a', '64k',
+      '-vbr:a', 'on',
+      #'-compression_level:a', '10',
+      '-frame_duration:a', '60',
+      #'-application:a', 'audio',
+    ]
     # 输出重缩放，会把输出重缩放到指定分辨率，可以设置为'WxH'直接指定输出分辨率，例如'3840x2160'（4K）
     # 也可以指定为当前视频的大小倍数，例如'1.5'，这样1080P视频将会被放大到2880x1620（这个也符合了B站的4K视频标准）
     output_resize: ~
+    # GOP（关键帧间隔） = 源视频帧率 x gop_multiplier
+    #   8    → 每 8 秒一个关键帧（1080P60 就是 -g 480，1080P30 就是 -g 240）
+    #   10   → 每 10 秒一个关键帧
+    #   ~    → 不干预，使用编码器默认值（关闭此功能）
+    # 注意：如果你自己在 vencoder_args 里写了 -g，这里会自动跳过，以你的为准
+    gop_multiplier: 8
+    # 当无法探测到源视频帧率时，GOP 按这个帧率兜底计算
+    gop_default_fps: 30
     # 高级渲染参数
     # 请确保你明白这些参数的含义后再修改
     advanced_render_args:
       # 直接定义video filter，这里的{DANMAKU}代表弹幕文件路径
       # 注意设置filter_complex之后将会禁用fps等其他有关filter的选项
-      filter_complex: subtitles=filename='{DANMAKU}'
+      #filter_complex: subtitles=filename='{DANMAKU}'
+      filter_complex: ~
   # 原视频转码
   transcode:
     # 渲染输出文件夹，默认为在录制输出文件夹后面加上“转码后”
@@ -403,6 +433,8 @@ upload_args:
     dtime: 0
     # 允许转载? 0-允许转载，1-禁止转载
     no_reprint: 1
+    # 是否开启充电? 0-关闭 1-开启
+    open_elec: 1
     # 额外参数列表（仅biliuprs生效）
     # 此参数将直接传入biliup-rs
     extra_args: ~
@@ -420,146 +452,183 @@ upload_args:
     charging_pay: 0
     # 开放字幕投稿?
     open_subtitle: False
-    # 是否取消视频推送动态（一般配合加入合集使用）? 0-不取消 1-取消
-    no_disturbance: 0
-    # 加入合集ID
-    epid: ~
     # 简介中的at信息，设置方法请参考biliup
     credits: ~
     # 额外请求参数（此功能暂不生效）
     # 此参数将直接作为上传请求提交的参数
     extra_kwargs: {}
   
-  # 上传到YouTube
-  # 此功能使用较复杂，细节请参考文档
-  youtube:
-    # 上传引擎，目前只支持youtubev3 (Google API v3 for Youtube)
-    engine: youtubev3
-    # 应用程序密钥路径
-    client_secrets: .login_info/client.json
-    # Google账号名称
-    # 也可以直接指向已授权的Oauth2文件路径
-    account: .login_info/google-oauth2.json
-    # Google账号验证选项
-    # 例如：在服务器上无GUI验证时，应设置为['--noauth_local_webserver']
-    credential_args: ~
-    # 重试次数，如果上传遇到错误将会重试，设置为0表示不重试
-    # 特别提示：此重试会完全重传视频并消耗API配额（除非由于配额不够失败），需要断点续传请设置下面的参数
-    retry: 0
-    # 断点续传次数，此次数为单次上传中断点续传的次数，设置为0表示无限续传，直到上传完成或者API返回错误
-    # 强烈建议设置无限续传，否则完全重传需要消耗API配额，并且未上传成功的视频需要自己到YouTube页面删除
-    retry_resume: 0
-    # 上传超时时间（秒），如果上传时间超过这个时间将会被强制终止（用于防止卡死），0表示不限制
-    timeout: 0
-    # 实时上传（边录边传），每录制一个分段上传一次，youtube默认关闭
-    realtime: False
-    # 是否合并视频
-    # 如果设置为True，那么会把所有分段视频合并成一个视频再上传，默认True
-    # 使用实时上传时此功能不生效
-    # 强烈建议关闭实时上传，并启动合并视频再上传，因为YouTube API默认每天只能上传6个视频
-    # 使用此功能请确保延迟下播时间设置较短，否则不同分辨率的视频合并会导致上传失败
-    concat_video: True
-    # 上传的视频最短长度，小于此长度的视频会被自动过滤，默认120s
-    min_length: 120
-    # 以下参数来自Google API，部分选项请参考 https://developers.google.com/youtube/v3/docs/videos/insert
-    # 标题，可以使用关键字替换
-    # 默认的例子：[飞天狙想要努力变胖/直播回放] 晚上七点半比赛 2023年2月24日 （带弹幕版）
-    title: '[{STREAMER.NAME}/直播回放] {TITLE} {CTIME.YEAR}年{CTIME.MONTH:02d}月{CTIME.DAY:02d}日'
-    # 简介，可以使用关键字替换
-    desc: |
-      {STREAMER.NAME} 的直播回放
-      标题：{TITLE} 
-      时间：{CTIME.YEAR}年{CTIME.MONTH:02d}月{CTIME.DAY:02d}日
-      直播地址：{STREAMER.URL} 
-
-      ————————————
-      由DanmakuRender录制：
-      https://github.com/SmallPeaches/DanmakuRender
-    # 视频标签，多个标签逗号分割，例如：'直播回放,ABC'
-    # Youtube的视频标签可以为空
-    tag: ~
-    # 视频分区编号，默认20（游戏）
-    # 请参考 https://developers.google.com/youtube/v3/docs/videoCategories/list?hl=zh-cn
-    # 或者 https://gist.github.com/dgp/1b24bf2961521bd75d6c
-    category: 20
-    # 延迟发布（秒）（此功能暂不可用）
-    # 延迟时间从上传启动时开始计算，使用延迟上传时privacy固定为private
-    dtime: 0
-    # 隐私设置，可选：public（公开）, unlisted（未列出）, private（私有），默认public
-    privacy: public
-    # 完全自定义上传请求（https://developers.google.com/youtube/v3/docs/videos/insert?hl=zh-cn#request-body）
-    # 应设置为json格式字符串，可使用关键字替换
-    raw_upload_body: ~
-
-  # 完全自定义上传
-  # 调用的上传程序应该在上传成功后返回0，失败返回非0，并将错误信息输出到stderr
-  # 具体说明请参考GitHub文档
-  custom:
-    # 上传引擎，目前只支持子进程调用
+  # ══════════════════════════════════════════════════════════════════
+  # 上传到网盘（rclone）
+  #   用法：rclone 必须已安装且在 PATH 中，并且已经配置好 remote
+  #   本机已配置的 remote 名：123pan   （配置见 rclone.conf）
+  #
+  #   ★ 怎么让视频同时传 B 站 + 网盘 ★
+  #   在每个任务 yml 里加一段 upload_args，key 写 'bilibili+rclone' 即可：
+  #
+  #     upload_args:
+  #       dm_video+bilibili+rclone:
+  #         - target: bilibili      # ← 这个 target 决定继承下面哪一套默认参数
+  #           engine: biliuprs
+  #         - target: rclone
+  #           engine: subprocess
+  #           command: ['rclone','copy','{PATH}','123pan:DMR录播/{TASKNAME}','--retries','5']
+  #
+  #   key 的写法规则：用 '+' 分隔，其中**必须包含一个视频类型**：
+  #       src_video = 原视频 .mkv      dm_video = 弹幕版 .mp4
+  #   其余部分只是匹配用的标签，随便写（比如 bilibili+rclone）。
+  #
+  #   两份上传是**并行**的，谁都不会等谁。注意 auto_clean 的触发条件是
+  #   「该视频类型的所有上传都成功」，所以只要有一份失败（比如网盘传挂了），
+  #   文件就不会被清理 —— 这是有意的保护，去 WebUI 的「失败上传」里重试即可。
+  # ══════════════════════════════════════════════════════════════════
+  rclone:
+    # 上传引擎，网盘只能用子进程调用
     engine: subprocess
-    # 重试次数，如果上传遇到错误将会重试，设置为0表示不重试
-    # 注意：重试会整个视频重传，并且阻塞后面视频的上传，不应该设置太大
+    # 重试次数，设置为0表示不重试
+    # 注意：重试会把整个文件重传，不建议设置太大
     retry: 3
-    # 上传超时时间（秒），如果上传时间超过这个时间将会被强制终止（用于防止卡死），0表示不限制
+    # 上传超时时间（秒），超过此时间会被强制终止，0表示不限制
     timeout: 0
-    # 实时上传，自定义时必须启用
-    realtime: True
-    # 上传的视频最短长度，小于此长度的视频会被自动过滤，默认120s
-    min_length: 120
-    # 上传命令行参数，可以使用关键字替换
-    # 为保证安全调用，请使用参数列表的形式，例如：['python', 'upload.py', '{PATH}']
-    command: ~
+    # 实时上传：每录完一个分段就传一次
+    #   False = 整场直播的所有分段合并成一个视频再传（网盘归档推荐，省事且不会传出一堆碎文件）
+    #   True  = 边录边传，但会产生多个文件
+    realtime: False
+    # 上传的视频最短长度（秒），小于此长度的视频会被自动过滤
+    min_length: 0
+    # 上传命令行参数，可用关键字替换（大小写不敏感）
+    #   {PATH}      = 要上传的文件完整路径
+    #   {TASKNAME}  = 任务名（主播名，和 DMR-xxx.yml 的 xxx 一致）
+    #   {TITLE}     = 直播标题    {STREAMER.NAME} = 主播名
+    #   {DTYPE}     = 文件类型（src_video / dm_video）
+    #   {CTIME.YEAR} {CTIME.MONTH:02d} {CTIME.DAY:02d} 等 = 时间
+    # ⚠️ 写错的关键字会被替换成空字符串，不会报错，改完务必测试
+    # ⚠️ 'copy' 是复制（本地保留一份），'move' 是上传后删除本地
+    command: ['rclone', 'copy', '{PATH}', '123pan:DMR录播/{TASKNAME}', '--retries', '5']
 
-# 清理器默认参数
+# ════════════════════════════════════════════════════════════════════
+# 清理 & 云盘归档配置（维护文档，改动前先读这里）
+# ════════════════════════════════════════════════════════════════════
+#
+# 【当前策略一览】（2026-08-29 定稿，本地存档 + 123网盘云端归档）
+#   每个分段录制完成 → 渲染弹幕版 mp4 → 渲染完成瞬间：
+#     ① 原视频 .mkv + 弹幕 .ass   → 立即删除（不可恢复）
+#     ② 弹幕版 .mp4               → rclone 上传 123网盘 /DMR录播/主播名/
+#                                   上传成功后本地保留一份
+#
+# 【文件类型】（下面第二段配置的顶层 key）
+#     src_video = 原视频 .mkv（被 delete/move 时自动连带删除它的 .ass 弹幕）
+#     dm_video  = 弹幕版 .mp4
+#     all       = 两者都算
+#
+# 【清理方法】（每条规则的 method 字段）
+#     delete = 直接删   move = 移动（*TRASHBIN*=回收站）   copy = 复制   custom = 自定义命令
+#
+# 【继承优先级】
+#     任务 yml 里写了 clean_args → 按任务的来（想给某主播单独定制时用）
+#     任务 yml 没写             → 按下方 ② clean_args_task_default（当前 70+ 任务都走这里）
+#
+# 【custom 命令可用关键字】
+#     {path}=文件完整路径  {taskname}=任务名  {title}=直播标题
+#     {streamer.name}=主播名  {size} {ctime} {group_id} {segment_id} ...
+#     ⚠️ 写错的关键字会被替换成空字符串（不报错），改完务必测试
+#
+# 【常见改动速查】
+#     想延迟删原视频（留后悔期）  → ② 规则1 的 delay（单位秒，3600=1小时）
+#     想换云盘保存目录           → ② 规则2 的 '123pan:DMR录播/{taskname}'
+#     想上传后连本地也删         → ② 备选方案 C
+#     想原视频进回收站不硬删     → ② 备选方案 D
+#     想改 rclone 参数           → ② 规则2 的 command 数组
+# ════════════════════════════════════════════════════════════════════
+
+# ── ① method 默认参数模板 ──────────────────────────────────────────
+#     作用：②或任务yml里的规则漏写字段时，从这里补默认值。
+#     平时不需要动这一段。
 clean_args:
-  # 移动文件
   move:
-    # 目标文件夹，可以使用关键字替换，文件夹不存在会自动创建
-    # 如果设置为"*TRASHBIN*"，那么文件将会被移动至回收站（需要操作系统支持）
-    dest: ~
-    # 清理延迟（秒），在上传完成后会过一段时间再清理，下同
-    # 如果指定多个清理任务，不同清理任务的延迟并不顺延，均会在上传完成后的指定时间后清理
-    delay: 86400
-    # 清理弹幕视频时同时清理原文件，默认false，下同
-    # 特别注意：应该只在不上传原文件的情况下使用此选项，否则可能会导致原视频上传失败
-    w_srcfile: False
-    # 清理原文件时同时清理转码前文件（如果有的话），默认true，下同
-    w_srcpre: True
-  # 复制文件
+    dest: ~              # move/copy 的目标目录（用时必须在具体规则里指定）
+    delay: 86400         # 默认延迟 24 小时
+    w_srcfile: False     # 清理 dm_video 时是否连带删 src_video+弹幕（默认否）
+    w_srcpre: True       # 清理 src_video 时是否连带删"转码前"文件（默认是）
   copy:
     dest: ~
     delay: 0
     w_srcfile: False
     w_srcpre: True
-  # 删除文件
   delete:
-    delay: 172800
+    delay: 172800        # delete 出厂默认延迟 48 小时（②里已覆盖为 0）
     w_srcfile: False
     w_srcpre: True
-  # 自定义命令
-  custom: 
-    # 命令行参数，可以使用关键字替换
-    # 为保证安全调用，请使用参数列表的形式，例如：['rm', '-rf', '{PATH}']
-    command: ~
-    # 是否等待命令执行完成
-    # 如果设置为false，那么程序会立即执行下一个清理任务，不会等待命令执行完成
-    # 注意：程序自带的其他清理方式均为同步执行(wait=True)
-    wait: True
+  custom:
+    command: ~           # custom 必须写命令数组，如 ['powershell','-File','xx.ps1','{path}']
+    wait: True           # 是否等命令跑完（内置 move/copy/delete 恒为同步）
     delay: 0
     w_srcfile: False
     w_srcpre: True
 
-# WebUI参数
+# ── ② 全局默认清理规则 ─────────────────────────────────────────────
+#     任务 yml 没写 clean_args 时生效（你的全部任务都是这种情况）
+clean_args_task_default:
+
+  # ▼▼▼ 规则 1：原视频 → 渲染完成后立即删除 ▼▼▼
+  #     .ass 弹幕会被 Cleaner 自动连带删除（读文件的 dm_file_id 属性）
+  #     没开转码时 w_srcpre 无可删对象，自动跳过
+  src_video:
+    method: delete
+    delay: 0             # 0=立即。想留后悔期改 3600（1小时）或 86400（1天）
+    w_srcpre: True
+
+  # ▼▼▼ 规则 2：弹幕版 → 渲染完成后 rclone 上传 123 网盘 ▼▼▼
+  #     rclone remote 名固定为 123pan（rclone config 里配置的那个）
+  #     上传成功后本地文件保留；命令是幂等的，失败后重跑即可补传
+  #     wait=True：Cleaner 串行等这段传完再处理下一段的清理（不并发挤爆上行）
+  #     ⚠️ 若 123 云盘改了 WebDAV 密码，需要重新 rclone config 更新 pass
+  dm_video:
+    - method: custom
+      delay: 0
+      wait: True
+      command:
+        - 'rclone'
+        - 'copy'
+        - '{path}'
+        - 'cd2:/百度网盘/DMR录播/{taskname}'     # ← 云盘目录，想换改这里
+        - '--retries'
+        - '5'                             # 整体重试 5 次
+        - '--low-level-retries'
+        - '10'                            # HTTP 层重试 10 次（扛网络抖动）
+        - '--transfers'
+        - '1'                             # 单文件传输，占用最低
+ #      - '--ignore-times'                # 每次强制校验覆盖（防传一半的脏文件残留）
+
+  # ▲▲▲ 备选方案（想换策略时：注释掉上面对应规则，取消这里的注释）▲▲▲
+  #
+  # ❏ 备选 B：弹幕版复制到 RaiDrive 挂载盘（不装 rclone 用这个，稳定性差一档）
+  #           Z: 换成实际挂载盘符；copy 不删本地文件
+  # dm_video:
+  #   - method: copy
+  #     dest: 'Z:/DMR录播/{taskname}'
+  #     delay: 0
+  #
+  # ❏ 备选 C：上传成功才删本地弹幕版（需要自建脚本）
+  #     ⚠️ 复杂逻辑不能直接写进 command——PowerShell 的 {} 花括号会被程序的
+  #        关键字替换吃掉，必须写成独立脚本文件，把 {path} 作为参数传入
+  #     脚本示例 D:/DMR/upload_dm.ps1：
+  #         param([string]$p)
+  #         rclone copy $p "123pan:DMR录播" --retries 5
+  #         if ($LASTEXITCODE -eq 0) { Remove-Item -LiteralPath $p }
+  # dm_video:
+  #   - method: custom
+  #     delay: 0
+  #     wait: True
+  #     command: ['powershell','-ExecutionPolicy','Bypass','-File','D:/DMR/upload_dm.ps1','{path}']
+  #
+  # ❏ 备选 D：原视频先进回收站，7 天后彻底删（怕误删用这个）
+  # src_video:
+  #   - method: move
+  #     dest: '*TRASHBIN*'
+  #     delay: 0
+  #   - method: delete
+  #     delay: 604800
+
 webservice_kernel_args:
-  # 启用 Web API
   web_api: True
-  # 服务端口
-  port: 5000
-  # 绑定地址
-  host: '0.0.0.0'
-  # 是否强制登录
-  force_login: True
-  # 管理员用户名
-  username: 'admin'
-  # 管理员密码
-  password: 'admin'

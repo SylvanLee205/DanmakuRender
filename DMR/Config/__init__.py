@@ -88,7 +88,19 @@ class Config():
                             upload_args = [upload_args]
                         replay_config['upload_args'][upload_file_types] = []
                         for upload_arg in upload_args:
-                            target = upload_arg.get('target', 'bilibili')
+                            # target 决定这份上传继承 global.yml 里的哪一套默认参数
+                            #   target: bilibili → 继承 upload_args.bilibili
+                            #   target: rclone   → 继承 upload_args.rclone
+                            # 没写 target 时按 engine 猜一个，方便只写 engine 的简写
+                            target = upload_arg.get('target')
+                            if not target:
+                                engine = upload_arg.get('engine')
+                                for name, cfg_default in global_upload_args.items():
+                                    if isinstance(cfg_default, dict) and cfg_default.get('engine') == engine:
+                                        target = name
+                                        break
+                                else:
+                                    target = 'bilibili'
                             if not global_upload_args.get(target):
                                 raise ValueError(f'不存在可用的上传目标 {target}.')
                             upload_config = deepcopy(global_upload_args[target])
@@ -96,22 +108,37 @@ class Config():
                             replay_config['upload_args'][upload_file_types].append(upload_config)
 
             if common_args.get('auto_clean'):
-                global_clean_args = self.global_config['clean_args']
+                global_clean_args = self.global_config.get('clean_args', {}) or {}
                 replay_config['clean_args'] = {}
-                if _replay_config.get('clean_args'):
-                    for clean_file_types, clean_args in _replay_config['clean_args'].items():
-                        if isinstance(clean_args, dict):
-                            clean_args = [clean_args]
-                        replay_config['clean_args'][clean_file_types] = []
-                        for clean_arg in clean_args:
-                            method = clean_arg.get('method')
-                            if not method:
-                                continue
-                            if not global_clean_args.get(method):
-                                raise ValueError(f'不存在可用的清理方法 {method}.')
-                            clean_config = deepcopy(global_clean_args[method])
-                            clean_config.update(clean_arg)
-                            replay_config['clean_args'][clean_file_types].append(clean_config)
+
+                # 任务 yml 中写的 clean_args
+                task_clean_args = _replay_config.get('clean_args') \
+                    if isinstance(_replay_config.get('clean_args'), dict) else None
+
+                # 如果任务没写 clean_args，使用 global 的「任务级默认规则」
+                #   优先级：任务 yml 的 clean_args
+                #        → global.clean_args_task_default（如果有）
+                #        → 兜底：src_video 立即 delete（本地存档、留弹幕版场景）
+                if not task_clean_args:
+                    task_clean_args = self.global_config.get('clean_args_task_default') \
+                        if isinstance(self.global_config.get('clean_args_task_default'), dict) \
+                        else None
+                if not task_clean_args:
+                    task_clean_args = {'src_video': {'method': 'delete', 'delay': 0}}
+
+                for clean_file_types, clean_args in task_clean_args.items():
+                    if isinstance(clean_args, dict):
+                        clean_args = [clean_args]
+                    replay_config['clean_args'][clean_file_types] = []
+                    for clean_arg in clean_args:
+                        method = clean_arg.get('method')
+                        if not method:
+                            continue
+                        if not global_clean_args.get(method):
+                            raise ValueError(f'不存在可用的清理方法 {method}. 请在 global.yml 的 clean_args 中添加 {method} 作为默认参数模板。')
+                        clean_config = deepcopy(global_clean_args[method])
+                        clean_config.update(clean_arg)
+                        replay_config['clean_args'][clean_file_types].append(clean_config)
 
             self.replay_config[taskname] = deepcopy(replay_config)
             return taskname
