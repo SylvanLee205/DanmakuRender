@@ -244,9 +244,11 @@ render_args:
     skip_upload_rule:
       enabled: False
       skip_landscape: True
+      # 横屏必选：竖屏无论码率帧率多高都不跳过
+      skip_require_landscape: True
       skip_bitrate_kbps: 2500
       skip_fps: 40
-      skip_min_matches: 2
+      skip_min_matches: 1
     # 高级渲染参数
     # 请确保你明白这些参数的含义后再修改
     advanced_render_args:

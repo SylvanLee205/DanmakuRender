@@ -152,42 +152,45 @@ TypeError: argument of type 'NoneType' is not iterable
 **关键点：跳过上传不影响本地文件** ——
 原视频照常按 `clean_args` 删除，弹幕版留存（不上传也不删）。
 
-配置在 `configs/global.yml` → `render_args.dmrender.skip_upload_rule`：
+配置在 `configs/global.yml` → `render_args.dmrender.skip_upload_rule`（**当前已开启**）：
 
 ```yaml
 skip_upload_rule:
-  enabled: False           # 总开关，默认关闭
-  skip_landscape: True     # 条件1：横屏（宽 > 高）
-  skip_bitrate_kbps: 2500  # 条件2：码率 >= 2500 kbps
-  skip_fps: 40             # 条件3：帧率 >= 40 fps
-  skip_min_matches: 2      # 3 个条件里满足任意 2 个就跳过
+  enabled: True                # 总开关
+  skip_landscape: True         # 条件1：横屏（宽 > 高）
+  skip_require_landscape: True # 横屏「必选」：竖屏一律不跳过
+  skip_bitrate_kbps: 2500      # 条件2：码率 >= 2500 kbps
+  skip_fps: 40                 # 条件3：帧率 >= 40 fps
+  skip_min_matches: 1          # 命中 1 个条件就跳过
 ```
 
-`skip_min_matches` 的含义：
+**当前生效的规则（横屏必选模式）= 横屏 且 (码率≥2500 或 帧率≥40) 就跳过上传。**
 
-| 值 | 效果 |
+实测判定结果：
+
+| 情况 | 判定 |
 |---|---|
-| `1` | 满足任意一个条件就跳过 |
-| `2` | **3 个条件里满足任意 2 个就跳过**（当前设置） |
-| `3` | 必须三个全满足才跳过 |
+| 横屏 1080p 6000kbps 30fps | **跳过上传**（横屏+码率） |
+| 横屏 1080p 1000kbps 60fps | **跳过上传**（横屏+帧率） |
+| 横屏 1080p 6000kbps 60fps | **跳过上传**（三项全中） |
+| 横屏 1080p 2500kbps 40fps | **跳过上传**（正好到阈值） |
+| 横屏 1080p 1500kbps 30fps | 正常上传（横屏但两项都不够） |
+| 横屏 1080p 2499kbps 39fps | 正常上传（差一点） |
+| 竖屏 1080x1920 8000kbps 60fps | 正常上传（**横屏必选，竖屏不跳**） |
+| 竖屏 1080x1920 1000kbps 30fps | 正常上传 |
 
-**⚠️ 两个必须知道的前提**：
+### `skip_require_landscape` 的作用
 
-1. **只在 `common_event_args.auto_upload: True` 时才起作用。** 上传没开，规则不会被触发。
-2. **`skip_min_matches: 2` 时竖屏也有机会被跳过**：
-   竖屏 + 码率≥2500 + 帧率≥40 同样命中 2 项，会跳过上传。
-   这部分也符合"体积太大不传"的初衷，但如果你只想跳横屏，看下面的写法。
+这是关键开关，决定横屏是"必选条件"还是"参与计数的条件之一"：
 
-**只想跳横屏的写法**（把帧率条件关掉，就只剩「横屏 + 高码率」能命中）：
+| 配置 | 效果 |
+|---|---|
+| `skip_require_landscape: True`<br>`skip_min_matches: 1` | **横屏必选**，再叠加码率/帧率任一。<br>竖屏无论多高码率都不跳过。← **当前设置** |
+| `skip_require_landscape: False`<br>`skip_min_matches: 2` | 纯数值判断（3 选 2）。<br>竖屏 6Mbps 60fps 也会被跳过。 |
 
-```yaml
-skip_upload_rule:
-  enabled: True
-  skip_landscape: True     # 命中项 1
-  skip_bitrate_kbps: 2500  # 命中项 2
-  skip_fps: ~              # 关掉帧率条件，消除竖屏被跳过的可能
-  skip_min_matches: 2
-```
+> ⚠️ 踩过的坑：横屏如果**参与命中计数**，`skip_min_matches: 1` 会退化成
+> "只要是横屏就跳过"，码率和帧率阈值形同虚设。
+> 所以必选模式下横屏被明确排除在计数之外（只在日志里显示，不计入 `x/y`）。
 
 **数据缺失时的行为（fail-open）**：任何一项探测不到（分辨率/码率/帧率），
 都**不会**导致跳过，只会在日志里写明原因。宁可多传也不误跳过。
@@ -195,12 +198,19 @@ skip_upload_rule:
 **内部实现要点**：跳过时状态会标成 `upload_skipped` 而不是停在 `ready`。
 这是必须的 —— 清理逻辑要求状态为 `uploaded` 才清理，如果只是"不提交上传任务"，
 原视频会永远删不掉。`upload_skipped` 被当作"该传的都处理完了"。
+另外 `onLiveSegment` / `onLiveEnd` 里补了一次 `_check_for_clean` 调用，
+因为跳过上传不会产生 `onUploadEnd` 事件。
 
 **验证脚本**：
 ```powershell
-python tools\test_skip_upload.py        # 规则引擎单测（22 个用例）
-python tools\test_skip_upload_flow.py   # 状态机 + 清理联动集成测试
+python tools\test_skip_upload.py         # 规则引擎单测（30 个用例）
+python tools\test_skip_upload_config.py  # 用真实 global.yml 验证当前行为
+python tools\test_skip_upload_flow.py    # 状态机 + 清理联动集成测试
 ```
+
+> ⚠️ **重要前提**：这个规则**只在 `common_event_args.auto_upload: True` 时才起作用**。
+> 如果你的任务没开上传（当前 31 个任务都是 `auto_upload: False`），规则不会被触发。
+> 想让它生效，需要在任务 yml 里打开 `auto_upload`。
 
 ### 9. 【文档】`.gitignore` 补上敏感信息
 

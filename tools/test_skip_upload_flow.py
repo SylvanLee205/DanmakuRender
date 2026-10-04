@@ -18,9 +18,10 @@ from DMR.utils import VideoInfo, StreamerInfo
 SKIP_RULE = {
     'enabled': True,
     'skip_landscape': True,
+    'skip_require_landscape': True,      # 横屏必选：竖屏一律不跳过
     'skip_bitrate_kbps': 2500,
     'skip_fps': 40,
-    'skip_min_matches': 2,
+    'skip_min_matches': 1,               # 横屏 + (码率或帧率) 命中
 }
 
 
@@ -115,15 +116,17 @@ def main():
     print('=' * 74)
 
     ok = True
-    print('\n--- 应该跳过上传的情况（横屏+高码率）---')
-    ok &= run_case('横屏 1080p 6000kbps 30fps  -> 3项中命中横屏+码率', (1920, 1080), 6000, 30, True)
+    print('\n--- 应该跳过上传的情况（横屏 + 码率/帧率不达标）---')
+    ok &= run_case('横屏 1080p 6000kbps 30fps -> 横屏+码率', (1920, 1080), 6000, 30, True)
+    ok &= run_case('横屏 1080p 1000kbps 60fps -> 横屏+帧率', (1920, 1080), 1000, 60, True)
 
     print('\n--- 不该跳过的情况 ---')
+    ok &= run_case('横屏 1080p 1500kbps 30fps -> 横屏但码率帧率都不够', (1920, 1080), 1500, 30, False)
     ok &= run_case('竖屏 1000kbps 30fps -> 0命中', (1080, 1920), 1000, 30, False)
-    ok &= run_case('竖屏 6000kbps 30fps -> 只命中码率', (1080, 1920), 6000, 30, False)
+    ok &= run_case('竖屏 6000kbps 30fps -> 竖屏，横屏必选所以不跳', (1080, 1920), 6000, 30, False)
 
-    print('\n--- 反直觉但符合规则：竖屏高码率高帧率也跳过 ---')
-    ok &= run_case('竖屏 6000kbps 60fps -> 命中码率+帧率', (1080, 1920), 6000, 60, True)
+    print('\n--- 横屏必选：竖屏再高质量也不跳过 ---')
+    ok &= run_case('竖屏 8000kbps 60fps -> 不跳过', (1080, 1920), 8000, 60, False)
 
     print()
     print('=' * 74)

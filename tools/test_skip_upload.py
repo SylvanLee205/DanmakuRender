@@ -25,6 +25,16 @@ RULE = {
     'skip_min_matches': 2,
 }
 
+# 横屏必选模式（当前 global.yml 用的就是这个）
+RULE_LANDSCAPE_ONLY = {
+    'enabled': True,
+    'skip_landscape': True,
+    'skip_require_landscape': True,
+    'skip_bitrate_kbps': 2500,
+    'skip_fps': 40,
+    'skip_min_matches': 1,
+}
+
 
 def make_video(resolution, bitrate_kbps, fps, duration=3600, size=None):
     """构造一个带指定特征的 VideoInfo。bitrate 用 size/duration 表达。"""
@@ -99,6 +109,25 @@ def main():
           'skip_fps': None, 'skip_min_matches': 2}
     ok &= case('只判横屏+码率: 竖屏高码率（1命中）', make_video(V, hi_b, hi_f), rule=r2, expect=False)
     ok &= case('只判横屏+码率: 横屏高码率（2命中）', make_video(H, hi_b, lo_f), rule=r2, expect=True)
+
+    print('\n=== 7. 横屏必选模式（当前 global.yml 的配置）===')
+    print('  规则: 横屏必选 + (码率>=2500 或 帧率>=40)，即 skip_min_matches=1')
+    ok &= case('横屏 + 高码率 + 低帧率', make_video(H, hi_b, lo_f), rule=RULE_LANDSCAPE_ONLY, expect=True)
+    ok &= case('横屏 + 低码率 + 高帧率', make_video(H, lo_b, hi_f), rule=RULE_LANDSCAPE_ONLY, expect=True)
+    ok &= case('横屏 + 高码率 + 高帧率', make_video(H, hi_b, hi_f), rule=RULE_LANDSCAPE_ONLY, expect=True)
+    ok &= case('横屏 + 低码率 + 低帧率（横屏但都不够）', make_video(H, lo_b, lo_f), rule=RULE_LANDSCAPE_ONLY, expect=False)
+    ok &= case('竖屏 + 高码率 + 高帧率 -> 不该跳过', make_video(V, hi_b, hi_f), rule=RULE_LANDSCAPE_ONLY, expect=False)
+    ok &= case('竖屏 + 高码率 + 低帧率 -> 不该跳过', make_video(V, hi_b, lo_f), rule=RULE_LANDSCAPE_ONLY, expect=False)
+    ok &= case('正方形 + 高码率 + 高帧率 -> 不算横屏', make_video((1000, 1000), hi_b, hi_f), rule=RULE_LANDSCAPE_ONLY, expect=False)
+
+    print('\n=== 8. 横屏必选 + 分辨率探测失败（fail-open）===')
+    v_nodim = VideoInfo(path=r'F:\123Pan_DanmakuRender\直播回放\不存在.mp4',
+                        size=int(hi_b * 1000 / 8 * 3600), duration=3600,
+                        streamer=StreamerInfo(name='t'), taskname='t')
+    v_nodim.resolution = None
+    v_nodim.fps = hi_f
+    v_nodim.bitrate = hi_b
+    ok &= case('分辨率拿不到（不给路径可探测）', v_nodim, rule=RULE_LANDSCAPE_ONLY, expect=False)
 
     print()
     print('=' * 70)

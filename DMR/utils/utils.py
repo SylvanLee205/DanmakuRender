@@ -273,10 +273,14 @@ def evaluate_upload_skip_rule(video, rule:dict, logger=None) -> tuple:
     但本地文件仍然保留（原视频照常清理，弹幕版留存）。
 
     规则（rule 里的键都带 skip_ 前缀，语义统一为「满足即视为命中」）：
-        skip_landscape     : True 时，视频是横屏（宽 > 高）算命中
-        skip_bitrate_kbps  : 数值，视频码率 >= 该值算命中（单位 kbps）
-        skip_fps           : 数值，视频帧率 >= 该值算命中
-        skip_min_matches   : 命中几个条件就跳过，默认 2（即「3 个条件满足任意 2 个」）
+        skip_landscape        : True 时，视频是横屏（宽 > 高）算命中
+        skip_require_landscape: True 时，横屏是**必选条件** ——
+                                不是横屏就直接不跳过（哪怕码率/帧率再高）
+        skip_bitrate_kbps     : 数值，视频码率 >= 该值算命中（单位 kbps）
+        skip_fps              : 数值，视频帧率 >= 该值算命中
+        skip_min_matches      : 命中几个条件就跳过，默认 2（即「3 个条件满足任意 2 个」）
+                                配合 skip_require_landscape 时通常写 1：
+                                横屏必选 + 码率/帧率命中任意 1 个
 
     码率优先用 VideoInfo 自带的 bitrate / size，都没有时用 ffprobe 探测文件大小。
     帧率优先用 VideoInfo.fps，没有时用 ffprobe 探测。
@@ -296,7 +300,8 @@ def evaluate_upload_skip_rule(video, rule:dict, logger=None) -> tuple:
     missing = []
 
     # --- 1. 横屏判定 ---
-    if rule.get('skip_landscape'):
+    is_landscape = None
+    if rule.get('skip_landscape') or rule.get('skip_require_landscape'):
         resolution = getattr(video, 'resolution', None)
         if not resolution or len(resolution) != 2 or not all(resolution):
             try:
@@ -306,10 +311,24 @@ def evaluate_upload_skip_rule(video, rule:dict, logger=None) -> tuple:
                 resolution = None
         if resolution and len(resolution) == 2 and all(resolution):
             w, h = int(resolution[0]), int(resolution[1])
-            if w > h:
-                hits.append(f'横屏{w}x{h}')
+            is_landscape = w > h
         else:
             missing.append('分辨率')
+
+    if rule.get('skip_require_landscape'):
+        # 横屏是必选前置条件，**不参与命中计数**（否则 skip_min_matches=1 就退化成
+        # "只要是横屏就跳过"，码率和帧率的阈值形同虚设）。
+        # 拿不到分辨率时不跳过；明确是竖屏也不跳过。
+        if is_landscape is None:
+            return False, (f'横屏必选但无法判断方向（数据缺失: {", ".join(missing)}），按不跳过处理')
+        if not is_landscape:
+            return False, '横屏必选，本视频是竖屏，不跳过'
+        landscape_hit = f'横屏{w}x{h}'
+    else:
+        landscape_hit = None
+        if rule.get('skip_landscape') and is_landscape:
+            resolution = getattr(video, 'resolution', None) or ()
+            hits.append(f'横屏{resolution[0]}x{resolution[1]}' if len(resolution) == 2 else '横屏')
 
     # --- 2. 码率判定 ---
     bitrate_threshold = rule.get('skip_bitrate_kbps')
@@ -354,6 +373,9 @@ def evaluate_upload_skip_rule(video, rule:dict, logger=None) -> tuple:
             missing.append('帧率')
 
     should_skip = len(hits) >= need_matches
+    # 横屏必选模式下，命中项里补上「横屏」这个前提，只为让日志更直观
+    if should_skip and landscape_hit:
+        hits = [landscape_hit] + hits
     detail = (f'命中 {len(hits)}/{need_matches} 项 [{", ".join(hits) or "无"}]'
               + (f'；数据缺失: {", ".join(missing)}' if missing else ''))
     return should_skip, detail

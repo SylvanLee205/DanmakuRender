@@ -350,7 +350,7 @@ render_args:
     #         原视频照常按 clean_args 删除，弹幕版按 clean_args 留存（不上传也不删）。
     #
     #   三个条件可任意组合，skip_min_matches 决定"命中几个才算跳过"：
-    #     skip_min_matches: 2  →  3 个条件里满足任意 2 个就跳过（当前设置）
+    #     skip_min_matches: 2  →  3 个条件里满足任意 2 个就跳过
     #     skip_min_matches: 3  →  必须三个全满足
     #     skip_min_matches: 1  →  满足任意一个就跳过
     #
@@ -359,15 +359,21 @@ render_args:
     # ══════════════════════════════════════════════════════════════════
     skip_upload_rule:
       # 总开关
-      enabled: False
+      enabled: True
       # 条件1：是横屏（宽 > 高）
       skip_landscape: True
+      # 横屏「必选」：打开后，竖屏视频无论码率/帧率多高都**不会**被跳过。
+      #   True  + skip_min_matches: 1  →  横屏 且 (码率>=2500 或 帧率>=40) 才跳过
+      #   False + skip_min_matches: 2  →  纯数值判断，竖屏高码率高帧率也会被跳过
+      skip_require_landscape: True
       # 条件2：码率 >= 这个值（单位 kbps）
       skip_bitrate_kbps: 2500
       # 条件3：帧率 >= 这个值
       skip_fps: 40
       # 命中几个条件就跳过
-      skip_min_matches: 2
+      #   配合 skip_require_landscape: True 时这里写 1
+      #   （横屏已经必选，码率/帧率再命中任意 1 个就跳过）
+      skip_min_matches: 1
     # 高级渲染参数
     # 请确保你明白这些参数的含义后再修改
     advanced_render_args:
