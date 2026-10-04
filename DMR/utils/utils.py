@@ -37,6 +37,7 @@ __all__ = [
     'filename_to_taskname',
     'DateTimeEncoder',
     'DateTimeDecoder',
+    'evaluate_upload_skip_rule',
 ]
 
 
@@ -236,8 +237,8 @@ def replace_keywords(string:str, kw_info:dict=None, replace_invalid:bool=False):
     return result
 
 def replace_invalid_chars(string:str) -> str:
-    filename = string
     """修复不合法的文件名,来自yutto"""
+    filename = string
 
     def to_full_width_chr(matchobj: re.Match[str]) -> str:
         char = matchobj.group(0)
@@ -263,6 +264,100 @@ def replace_invalid_chars(string:str) -> str:
     filename = regex_dots.sub("……", filename)
 
     return filename
+
+
+def evaluate_upload_skip_rule(video, rule:dict, logger=None) -> tuple:
+    """判断一个视频是否应该「跳过上传」。
+
+    用途：高质量大体积的录播不值得占用上传带宽/网盘空间，跳过上传；
+    但本地文件仍然保留（原视频照常清理，弹幕版留存）。
+
+    规则（rule 里的键都带 skip_ 前缀，语义统一为「满足即视为命中」）：
+        skip_landscape     : True 时，视频是横屏（宽 > 高）算命中
+        skip_bitrate_kbps  : 数值，视频码率 >= 该值算命中（单位 kbps）
+        skip_fps           : 数值，视频帧率 >= 该值算命中
+        skip_min_matches   : 命中几个条件就跳过，默认 2（即「3 个条件满足任意 2 个」）
+
+    码率优先用 VideoInfo 自带的 bitrate / size，都没有时用 ffprobe 探测文件大小。
+    帧率优先用 VideoInfo.fps，没有时用 ffprobe 探测。
+
+    返回 (should_skip: bool, detail: str)。
+    任何一项数据取不到都不会导致跳过（fail-open），只在日志里提示，避免误跳过。
+    """
+    if not rule or not rule.get('enabled'):
+        return False, '规则未启用'
+
+    need_matches = int(rule.get('skip_min_matches', 2) or 2)
+    if need_matches <= 0:
+        return False, 'skip_min_matches 配置无效'
+
+    path = getattr(video, 'path', None)
+    hits = []
+    missing = []
+
+    # --- 1. 横屏判定 ---
+    if rule.get('skip_landscape'):
+        resolution = getattr(video, 'resolution', None)
+        if not resolution or len(resolution) != 2 or not all(resolution):
+            try:
+                from .ffprobe import FFprobe
+                resolution = FFprobe.get_resolution(path)
+            except Exception:
+                resolution = None
+        if resolution and len(resolution) == 2 and all(resolution):
+            w, h = int(resolution[0]), int(resolution[1])
+            if w > h:
+                hits.append(f'横屏{w}x{h}')
+        else:
+            missing.append('分辨率')
+
+    # --- 2. 码率判定 ---
+    bitrate_threshold = rule.get('skip_bitrate_kbps')
+    if bitrate_threshold:
+        bitrate = getattr(video, 'bitrate', None)          # kbps
+        if not bitrate:
+            size = getattr(video, 'size', None)
+            duration = getattr(video, 'duration', None)
+            if not size:
+                try:
+                    size = os.path.getsize(path) if path and exists(path) else None
+                except Exception:
+                    size = None
+            if not duration:
+                try:
+                    from .ffprobe import FFprobe
+                    duration = FFprobe.get_duration(path)
+                except Exception:
+                    duration = None
+            if size and duration and duration > 0:
+                bitrate = size * 8 / duration / 1000            # bytes -> kbit
+        if bitrate:
+            if bitrate >= float(bitrate_threshold):
+                hits.append(f'码率{bitrate:.0f}kbps>={bitrate_threshold}')
+        else:
+            missing.append('码率')
+
+    # --- 3. 帧率判定 ---
+    fps_threshold = rule.get('skip_fps')
+    if fps_threshold:
+        fps = getattr(video, 'fps', None)
+        if not fps:
+            try:
+                from .ffprobe import FFprobe
+                fps = FFprobe.get_fps(path, fallback=0)
+            except Exception:
+                fps = 0
+        if fps and fps > 0:
+            if fps >= float(fps_threshold):
+                hits.append(f'帧率{fps:g}fps>={fps_threshold}')
+        else:
+            missing.append('帧率')
+
+    should_skip = len(hits) >= need_matches
+    detail = (f'命中 {len(hits)}/{need_matches} 项 [{", ".join(hits) or "无"}]'
+              + (f'；数据缺失: {", ".join(missing)}' if missing else ''))
+    return should_skip, detail
+
 
 def sec2hms(sec:float):
     sec = float(sec)

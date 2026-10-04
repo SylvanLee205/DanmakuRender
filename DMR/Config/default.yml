@@ -239,6 +239,14 @@ render_args:
     # 输出重缩放，会把输出重缩放到指定分辨率，可以设置为'WxH'直接指定输出分辨率，例如'3840x2160'（4K）
     # 也可以指定为当前视频的大小倍数，例如'1.5'，这样1080P视频将会被放大到2880x1620（这个也符合了B站的4K视频标准）
     output_resize: ~
+    # 高质量大文件「跳过上传」规则（魔改版新增，详细说明见 configs/global.yml）
+    # 命中就跳过上传，但不影响本地文件（原视频照删，弹幕版留存）
+    skip_upload_rule:
+      enabled: False
+      skip_landscape: True
+      skip_bitrate_kbps: 2500
+      skip_fps: 40
+      skip_min_matches: 2
     # 高级渲染参数
     # 请确保你明白这些参数的含义后再修改
     advanced_render_args:
