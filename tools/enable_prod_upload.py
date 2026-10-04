@@ -11,7 +11,7 @@ import re
 import shutil
 import time
 
-PROD = r'F:\123Pan_DanmakuRender'
+PROD = r'F:\DanmakuRender_AutoUp'
 CFG = os.path.join(PROD, 'configs')
 stamp = time.strftime('%Y%m%d-%H%M%S')
 BAK = os.path.join(PROD, 'backups', f'configs-{stamp}')

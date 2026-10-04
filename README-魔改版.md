@@ -1,7 +1,7 @@
 # DanmakuRender-魔改版
 
 基于 [SmallPeaches/DanmakuRender](https://github.com/SmallPeaches/DanmakuRender) **v5** 的个人魔改版。
-原版完整保留在 `F:\123Pan_DanmakuRender`，未做任何改动；本目录是在其基础上复制并修改的独立版本。
+原版完整保留在 `F:\DanmakuRender_AutoUp`，未做任何改动；本目录是在其基础上复制并修改的独立版本。
 
 - 原版项目：https://github.com/SmallPeaches/DanmakuRender/tree/v5
 - 本魔改版主要面向：**抖音直播录制 → 渲染弹幕版 → 同时上传 B站 + 123网盘 → 清理原视频** 这条流水线
@@ -21,7 +21,7 @@ python Start_Render.bat            # Windows 一键启动
 `configs/global.yml` 已经是配置好的可用状态（B站 + 123网盘、GOP 关闭、清理规则已配）。
 
 > ⚠️ `.venv` 没有复制过来。如果你想让新版本独立运行，把原版的 `.venv` 拷过来即可：
-> `xcopy /E /I F:\123Pan_DanmakuRender\.venv F:\DanmakuRender-魔改版\.venv`
+> `xcopy /E /I F:\DanmakuRender_AutoUp\.venv F:\DanmakuRender_Mod\.venv`
 
 ---
 
@@ -380,7 +380,7 @@ python tools\fix_failed_renders_args.py             # 实际修改（自动备�
 
    验证脚本：`python tools\test_dm_type.py`
 
-   > ⚠️ 注意：原版 `F:\123Pan_DanmakuRender` 那边用的是 `dm_type: all`，
+   > ⚠️ 注意：原版 `F:\DanmakuRender_AutoUp` 那边用的是 `dm_type: all`，
    > 会把 entry（进场）也一起收进去，比魔改版多。两边故意不同，别搞混。
 2. **B站 cookie 过期后不会提示**，表现为上传一直失败。cookie 在 `./login_info/bilibili.json`。
 3. **`.temp/failed_uploads.json` 里的失败上传不会自动重试**，需要去 WebUI 手动点重试。

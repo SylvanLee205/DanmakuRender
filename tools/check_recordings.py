@@ -14,7 +14,7 @@ import sys
 
 FFPROBE = r'C:\User Program Files\FFmpeg\bin\ffprobe.exe'
 FFMPEG = r'C:\User Program Files\FFmpeg\bin\ffmpeg.exe'
-ROOT = r'F:\123Pan_DanmakuRender\直播回放'
+ROOT = r'F:\DanmakuRender_AutoUp\直播回放'
 
 
 def probe(path, timeout=60):

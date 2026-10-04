@@ -90,7 +90,7 @@ def main():
 
     print('\n=== 4. 数据缺失时不能误跳过（fail-open）===')
     # 只保留横屏，码率和帧率都拿不到 -> 只能命中 1 项，不该跳过
-    v_missing = VideoInfo(path=r'F:\123Pan_DanmakuRender\直播回放\不存在的文件.mp4',
+    v_missing = VideoInfo(path=r'F:\DanmakuRender_AutoUp\直播回放\不存在的文件.mp4',
                           streamer=StreamerInfo(name='t'), taskname='t')
     v_missing.resolution = None
     v_missing.size = None
@@ -121,7 +121,7 @@ def main():
     ok &= case('正方形 + 高码率 + 高帧率 -> 不算横屏', make_video((1000, 1000), hi_b, hi_f), rule=RULE_LANDSCAPE_ONLY, expect=False)
 
     print('\n=== 8. 横屏必选 + 分辨率探测失败（fail-open）===')
-    v_nodim = VideoInfo(path=r'F:\123Pan_DanmakuRender\直播回放\不存在.mp4',
+    v_nodim = VideoInfo(path=r'F:\DanmakuRender_AutoUp\直播回放\不存在.mp4',
                         size=int(hi_b * 1000 / 8 * 3600), duration=3600,
                         streamer=StreamerInfo(name='t'), taskname='t')
     v_nodim.resolution = None

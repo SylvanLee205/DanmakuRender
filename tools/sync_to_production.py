@@ -15,8 +15,8 @@ import os
 import shutil
 import time
 
-SRC = r'F:\DanmakuRender-魔改版'
-DST = r'F:\123Pan_DanmakuRender'
+SRC = r'F:\DanmakuRender_Mod'
+DST = r'F:\DanmakuRender_AutoUp'
 
 # 要同步的文件（相对路径）—— 全是代码/文档，不含个人配置
 SYNC_FILES = [
@@ -41,6 +41,15 @@ SYNC_TREES = [
     'tools',      # 各种自检/分析脚本
     'docs',       # log_error_report.md / engine_comparison.md
 ]
+
+# tools/ 下这些文件名**绝不允许**被生产环境覆盖。
+# 原因：源目录 SRC 里也包含 tools/，而生产环境的 tools/ 是它的子集，
+# 两边互为源目标。若不排除，会把生产环境特有的文件（比如 recover_part.py）
+# 和 __init__.py 一起覆盖/搞坏。
+PROTECTED_NAMES = {'__init__.py', 'recover_part.py', 'biliup.exe'}
+
+# 这些前缀的是临时排错脚本，不参与同步
+SKIP_PREFIXES = ('_',)
 
 
 def main():
@@ -76,6 +85,8 @@ def main():
         for dirpath, dirnames, filenames in os.walk(sdir):
             dirnames[:] = [x for x in dirnames if x != '__pycache__']
             for fn in filenames:
+                if fn in PROTECTED_NAMES or fn.startswith(SKIP_PREFIXES):
+                    continue
                 sp = os.path.join(dirpath, fn)
                 rel = os.path.relpath(sp, SRC)
                 dp = os.path.join(DST, rel)

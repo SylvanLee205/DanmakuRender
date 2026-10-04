@@ -6,7 +6,7 @@ import glob
 import re
 from collections import Counter, defaultdict
 
-LOGS = sorted(glob.glob(r'F:\123Pan_DanmakuRender\logs\DMR-*.log'))
+LOGS = sorted(glob.glob(r'F:\DanmakuRender_AutoUp\logs\DMR-*.log'))
 
 # 每种引擎的启动日志特征 -> 引擎名
 START_PATTERNS = [

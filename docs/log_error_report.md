@@ -1,7 +1,7 @@
 # DanmakuRender 历史日志错误清单报告
 
-> 分析对象：`F:\123Pan_DanmakuRender\logs\`（127 个日志文件，79.8 MB，394,947 行，其中 127,775 条合法日志记录）
-> 以及 `F:\123Pan_DanmakuRender\download.log`（140 MB / 1,057,917 行，biliup 录制器输出）。
+> 分析对象：`F:\DanmakuRender_AutoUp\logs\`（127 个日志文件，79.8 MB，394,947 行，其中 127,775 条合法日志记录）
+> 以及 `F:\DanmakuRender_AutoUp\download.log`（140 MB / 1,057,917 行，biliup 录制器输出）。
 > 时间跨度：2026-01-11 18:32:03,794 ~ 2026-10-04 17:15:34,520（127 个日志日期）。
 > 日志均为 UTF-8，全部用 Python `open(encoding="utf-8", errors="replace")` 流式读取，未使用 Get-Content / grep。
 > 分析过程未修改/删除任何日志文件。
@@ -323,7 +323,7 @@
 - **代表性原文**：
 
   ```
-  [2026-10-01 01:31:08,817][__init__][error] [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'F:\\123Pan_DanmakuRender\\直播回放\\小鱼大王\\小鱼大王-2026年10月01日01点19分.mkv'
+  [2026-10-01 01:31:08,817][__init__][error] [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'F:\\DanmakuRender_AutoUp\\直播回放\\小鱼大王\\小鱼大王-2026年10月01日01点19分.mkv'
   ```
 
 #### `D5` 任务不存在 / 视频文件不存在 跳过
@@ -698,10 +698,10 @@
 | KeyError: '哈吉香' | 1 |
 | RuntimeError: 命令执行失败: ['rclone', 'copy', './直播回放/掉了颗兔牙（弹幕版）\\掉了颗兔牙-2026年09月21日23点46分（弹幕版）.mp4', '123pan:DMR录播/ | 1 |
 | RuntimeError: 不存在视频文件 ./直播回放/锦江女主\怦怦！-2026年09月22日23点14分.mkv，跳过渲染. | 1 |
-| PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'F:\\123Pan_DanmakuRender\\直播回放\\小鱼大王\\小鱼大王-2026年10月01日01 | 1 |
-| PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'F:\\123Pan_DanmakuRender\\直播回放\\我真的不吃土豆\\我真不吃土豆-2026年10月 | 1 |
-| PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'F:\\123Pan_DanmakuRender\\直播回放\\苏苏没烦恼\\苏苏没烦恼-2026年10月02日 | 1 |
-| PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'F:\\123Pan_DanmakuRender\\直播回放\\白桃少女\\白桃少女-2026年10月03日20 | 1 |
+| PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'F:\\DanmakuRender_AutoUp\\直播回放\\小鱼大王\\小鱼大王-2026年10月01日01 | 1 |
+| PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'F:\\DanmakuRender_AutoUp\\直播回放\\我真的不吃土豆\\我真不吃土豆-2026年10月 | 1 |
+| PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'F:\\DanmakuRender_AutoUp\\直播回放\\苏苏没烦恼\\苏苏没烦恼-2026年10月02日 | 1 |
+| PermissionError: [WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'F:\\DanmakuRender_AutoUp\\直播回放\\白桃少女\\白桃少女-2026年10月03日20 | 1 |
 | RuntimeError: 苏苏没烦恼 录制异常退出. | 1 |
 | Exception: 解析抖音房间号76368176167错误. | 1 |
 

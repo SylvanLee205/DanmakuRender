@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FFPROBE = r'C:\User Program Files\FFmpeg\bin\ffprobe.exe'
-VENV_PY = r'F:\123Pan_DanmakuRender\.venv\Scripts\python.exe'
+VENV_PY = r'F:\DanmakuRender_AutoUp\.venv\Scripts\python.exe'
 
 
 def log(msg):

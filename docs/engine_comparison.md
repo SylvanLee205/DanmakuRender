@@ -1,7 +1,7 @@
 # 录制引擎稳定性对比
 
 分析时间：2026-10-04
-数据来源：`F:\123Pan_DanmakuRender\logs\`（127 个日志文件，2026-01 ~ 2026-10）
+数据来源：`F:\DanmakuRender_AutoUp\logs\`（127 个日志文件，2026-01 ~ 2026-10）
 
 ---
 
@@ -116,7 +116,7 @@ while not self.stoped:
    换新版试试 —— 那个 `overflow when subtracting durations` 在新版里可能已修。
 3. **等有主播开播时，跑一次真实对测**（脚本已经写好）：
    ```powershell
-   cd F:\DanmakuRender-魔改版
+   cd F:\DanmakuRender_Mod
    python tools\ab_test_engines.py --seconds 60
    ```
    它会自动找一个在播的主播，依次用 streamgears / ffmpeg 跑 60 秒，
