@@ -30,6 +30,7 @@ SYNC_FILES = [
     'DMR/Uploader/subprocess_uploader.py',  # 上传失败可读原因
     'DMR/utils/ffprobe.py',              # get_fps()
     'DMR/utils/utils.py',                # evaluate_upload_skip_rule()
+    'main.py',                           # 启动时 .part 自动恢复钩子
     # 删除文件
 ]
 DELETE_FILES = [
