@@ -419,91 +419,20 @@ uploader_kernel_args:
   nuploaders: 1
 
 # 上传器默认参数
+# 上传器默认参数
+#   ⚠️ 魔改版：B站上传段（bilibili）已删除 —— 你暂时不用 B站。
+#      任务里如果还写了 target: bilibili，会被自动跳过并打 warning，不会报错中断。
+#      想恢复 B站上传：把原来的 bilibili 段从官方 default.yml 或 git 历史里拷回来即可。
 upload_args:
-  # 上传到B站
-  bilibili:
-    # 上传引擎，可选biliuprs或者biliwebapi
-    engine: biliuprs
-    # 上传账号名称，程序依靠这个来识别不同的账号，如果打算传不同账号就要设置不同的名称
-    account: bilibili
-    # 上传cookies路径，如果设置为空将会保存到./login_info/{ACCOUNT}.json
-    cookies: ~
-    # 重试次数，如果上传遇到错误将会重试，设置为0表示不重试
-    # 注意：重试会整个视频重传，并且阻塞后面视频的上传，不应该设置太大
-    # 同步上传无法重传
-    retry: 3
-    # 上传超时时间（秒），如果上传时间超过这个时间将会被强制终止（用于防止biliuprs卡死），0表示不限制
-    # biliwebapi不生效
-    timeout: 0
-    # 实时上传（边录边传），每录制一个分段上传一次，同一场直播的不同分P仍然会在一个视频下，默认开启
-    realtime: True
-    # 上传的视频最短长度，小于此长度的视频会被自动过滤，默认120s
-    min_length: 120
-    # 以下参数来自biliuprs，详细内容可以参考 https://biliup.github.io/biliup-rs/index.html
-    # 上传线路，设置为空则由程序自动选择
-    line: ~
-    # 上传线程数
-    limit: 3
-    # 是否为转载视频 1-自制 2-转载
-    copyright: 1
-    # 转载来源，转载视频必填
-    source: ''
-    # 分区号，分区参考 https://biliup.github.io/tid-ref.html
-    tid: 65
-    # 封面，指向本地文件地址
-    cover: ''
-    # 标题，可以使用关键字替换
-    # 默认的例子：[飞天狙想要努力变胖/直播回放] 晚上七点半比赛 2023年2月24日 （带弹幕版）
-    title: '[{STREAMER.NAME}/直播回放] {TITLE} {CTIME.YEAR}年{CTIME.MONTH:02d}月{CTIME.DAY:02d}日'
-    # 简介，可以使用关键字替换
-    desc: |
-      {STREAMER.NAME} 的直播回放
-      标题：{TITLE} 
-      时间：{CTIME.YEAR}年{CTIME.MONTH:02d}月{CTIME.DAY:02d}日
-      直播地址：{STREAMER.URL} 
-
-      ————————————
-      由DanmakuRender录制：
-      https://github.com/SmallPeaches/DanmakuRender
-    # 动态内容，可以使用关键字替换
-    dynamic: '{STREAMER.NAME} 的直播回放，{CTIME.YEAR}年{CTIME.MONTH:02d}月{CTIME.DAY:02d}日'
-    # 标签（一定要有！多个标签逗号分割）
-    tag: '直播回放'
-    # 延迟发布，单位秒，如果需要的话至少设置14400秒（4个小时）
-    dtime: 0
-    # 允许转载? 0-允许转载，1-禁止转载
-    no_reprint: 1
-    # 是否开启充电? 0-关闭 1-开启
-    open_elec: 1
-    # 额外参数列表（仅biliuprs生效）
-    # 此参数将直接传入biliup-rs
-    extra_args: ~
-
-    # 以下参数仅biliwebapi生效
-    # 视频分P排序，默认False（按实际上传的时间排序），设置为True则按文件名称排序
-    sort_videos: False
-    # 杜比音频? 0-关闭 1-开启
-    dolby: 0
-    # hires音频? 0-关闭 1-开启
-    hires: 0
-    # 仅自己可见? 0-否 1-是
-    is_only_self: 0
-    # 充电视频? 0-否 1-是
-    charging_pay: 0
-    # 开放字幕投稿?
-    open_subtitle: False
-    # 简介中的at信息，设置方法请参考biliup
-    credits: ~
-    # 额外请求参数（此功能暂不生效）
-    # 此参数将直接作为上传请求提交的参数
-    extra_kwargs: {}
-  
   # ══════════════════════════════════════════════════════════════════
   # 上传到网盘（rclone）
   #   用法：rclone 必须已安装且在 PATH 中，并且已经配置好 remote
-  #   本机已配置的 remote 名：123pan   （配置见 rclone.conf）
+  #   ⚠️ remote 名是 cd2（百度网盘 WebDAV），**不是** 123pan
+  #      cd2:    = 百度网盘（12TB，本机已在用，DMR录播 目录已存在）
+  #      123pan: = 另一个 123云盘的 remote，别搞混
   #
   #   ★ 怎么让视频同时传 B 站 + 网盘 ★
+  #   （B站段已删除；想恢复就把 bilibili 段加回 upload_args）
   #   在每个任务 yml 里加一段 upload_args，key 写 'bilibili+rclone' 即可：
   #
   #     upload_args:
@@ -512,15 +441,17 @@ upload_args:
   #           engine: biliuprs
   #         - target: rclone
   #           engine: subprocess
-  #           command: ['rclone','copy','{PATH}','123pan:DMR录播/{TASKNAME}','--retries','5']
+  #           command: ['rclone','copy','{PATH}','cd2:百度网盘/DMR录播/{TASKNAME}','--retries','5']
   #
   #   key 的写法规则：用 '+' 分隔，其中**必须包含一个视频类型**：
   #       src_video = 原视频 .mkv      dm_video = 弹幕版 .mp4
   #   其余部分只是匹配用的标签，随便写（比如 bilibili+rclone）。
   #
-  #   两份上传是**并行**的，谁都不会等谁。注意 auto_clean 的触发条件是
-  #   「该视频类型的所有上传都成功」，所以只要有一份失败（比如网盘传挂了），
-  #   文件就不会被清理 —— 这是有意的保护，去 WebUI 的「失败上传」里重试即可。
+  #   多份上传是**并行**的，谁都不会等谁。
+  #
+  #   ★ 魔改版：清理已经和上传**完全解耦** ★
+  #     原视频在弹幕版渲染完成的瞬间就按 clean_args 删除，不等上传结果。
+  #     上传成功与否只影响「失败上传」列表，不会让原视频堆积。
   # ══════════════════════════════════════════════════════════════════
   rclone:
     # 上传引擎，网盘只能用子进程调用
@@ -544,7 +475,7 @@ upload_args:
     #   {CTIME.YEAR} {CTIME.MONTH:02d} {CTIME.DAY:02d} 等 = 时间
     # ⚠️ 写错的关键字会被替换成空字符串，不会报错，改完务必测试
     # ⚠️ 'copy' 是复制（本地保留一份），'move' 是上传后删除本地
-    command: ['rclone', 'copy', '{PATH}', '123pan:DMR录播/{TASKNAME}', '--retries', '5']
+    command: ['rclone', 'copy', '{PATH}', 'cd2:百度网盘/DMR录播/{TASKNAME}', '--retries', '5']
 
 # ════════════════════════════════════════════════════════════════════
 # 清理 & 云盘归档配置（维护文档，改动前先读这里）
@@ -553,8 +484,15 @@ upload_args:
 # 【当前策略一览】（2026-08-29 定稿，本地存档 + 123网盘云端归档）
 #   每个分段录制完成 → 渲染弹幕版 mp4 → 渲染完成瞬间：
 #     ① 原视频 .mkv + 弹幕 .ass   → 立即删除（不可恢复）
-#     ② 弹幕版 .mp4               → rclone 上传 123网盘 /DMR录播/主播名/
-#                                   上传成功后本地保留一份
+#     ② 弹幕版 .mp4               → 本地保留（上传由 uploader 负责，与这里解耦）
+#
+#   ★★ 2026-10-05 重要改动：清理与上传彻底解耦 ★★
+#     以前：上传写在清理规则里（method: custom 调 rclone），且"上传成功才删原视频"
+#     现在：
+#       - 清理只管**本地文件**怎么处理（删 / 移 / 留）
+#       - 上传由 uploader 负责（配置见下面的 upload_args_task_default）
+#       - 原视频在弹幕版**渲染完成的瞬间**就被删除，不等上传结果
+#       - 上传成功或失败都不影响本地文件的清理，原视频不会堆积
 #
 # 【文件类型】（下面第二段配置的顶层 key）
 #     src_video = 原视频 .mkv（被 delete/move 时自动连带删除它的 .ass 弹幕）
@@ -575,15 +513,38 @@ upload_args:
 #
 # 【常见改动速查】
 #     想延迟删原视频（留后悔期）  → ② 规则1 的 delay（单位秒，3600=1小时）
-#     想换云盘保存目录           → ② 规则2 的 '123pan:DMR录播/{taskname}'
-#     想上传后连本地也删         → ② 备选方案 C
+#     想连本地弹幕版也删          → ② 规则2 取消注释（不建议，会和上传耦合）
 #     想原视频进回收站不硬删     → ② 备选方案 D
-#     想改 rclone 参数           → ② 规则2 的 command 数组
+#     想改上传的云盘目录         → upload_args_task_default 里的 rclone 命令
+#     想改 rclone 参数           → 同上
 # ════════════════════════════════════════════════════════════════════
 
 # ── ① method 默认参数模板 ──────────────────────────────────────────
 #     作用：②或任务yml里的规则漏写字段时，从这里补默认值。
 #     平时不需要动这一段。
+
+# ══════════════════════════════════════════════════════════════════
+# 任务级默认上传配置
+#   任务 yml 里**没写** upload_args 时，用这里的配置（省得每个任务抄一遍）。
+#   任务写了就以任务为准。
+#   写法参考 clean_args_task_default。
+#
+#   当前设置：弹幕版（dm_video）渲染完自动 rclone 上传到 123网盘。
+#   ⚠️ 只在 common_event_args.auto_upload: True 时才生效。
+#   ⚠️ B站上传段（bilibili）已从 upload_args 里删除；任务如果还写了
+#      target: bilibili 会被自动跳过并打 warning，不会报错中断。
+# ══════════════════════════════════════════════════════════════════
+upload_args_task_default:
+  # 原视频不上传（渲染完就被删掉了，上传也没意义）
+  # src_video:
+  #   - target: rclone
+  # 弹幕版：渲染完自动传百度网盘
+  #   ⚠️ remote 名是 cd2（百度网盘的 WebDAV），不是 123pan！
+  #      cd2:  = 百度网盘（12TB，本机已在用）
+  #      123pan: = 另一个 123云盘的 remote，别搞混
+  dm_video:
+    - target: rclone
+      command: ['rclone', 'copy', '{PATH}', 'cd2:百度网盘/DMR录播/{TASKNAME}', '--retries', '5', '--low-level-retries', '10', '--transfers', '1']
 clean_args:
   move:
     dest: ~              # move/copy 的目标目录（用时必须在具体规则里指定）
@@ -618,27 +579,16 @@ clean_args_task_default:
     delay: 0             # 0=立即。想留后悔期改 3600（1小时）或 86400（1天）
     w_srcpre: True
 
-  # ▼▼▼ 规则 2：弹幕版 → 渲染完成后 rclone 上传 123 网盘 ▼▼▼
-  #     rclone remote 名固定为 123pan（rclone config 里配置的那个）
-  #     上传成功后本地文件保留；命令是幂等的，失败后重跑即可补传
-  #     wait=True：Cleaner 串行等这段传完再处理下一段的清理（不并发挤爆上行）
-  #     ⚠️ 若 123 云盘改了 WebDAV 密码，需要重新 rclone config 更新 pass
-  dm_video:
-    - method: custom
-      delay: 0
-      wait: True
-      command:
-        - 'rclone'
-        - 'copy'
-        - '{path}'
-        - 'cd2:/百度网盘/DMR录播/{taskname}'     # ← 云盘目录，想换改这里
-        - '--retries'
-        - '5'                             # 整体重试 5 次
-        - '--low-level-retries'
-        - '10'                            # HTTP 层重试 10 次（扛网络抖动）
-        - '--transfers'
-        - '1'                             # 单文件传输，占用最低
- #      - '--ignore-times'                # 每次强制校验覆盖（防传一半的脏文件残留）
+  # ▼▼▼ 规则 2：弹幕版 → 渲染完成后【本地保留】▼▼▼
+  #     ⚠️ 2026-10-05 改动：上传已经从这个清理规则里拿掉了！
+  #        上传现在由 uploader 负责（见下面的 upload_args_task_default），
+  #        清理和上传**完全解耦**：这里只决定本地文件怎么处理。
+  #     这里配 delete 才会删本地弹幕版；当前故意不配，让它留在本地做备份。
+  #     想改成"上传成功后删本地"就配成 delete + delay，但那又会和上传耦合，
+  #     不推荐（上传失败会导致文件堆积）。
+  # dm_video:
+  #   method: delete
+  #   delay: 0
 
   # ▲▲▲ 备选方案（想换策略时：注释掉上面对应规则，取消这里的注释）▲▲▲
   #
@@ -649,12 +599,10 @@ clean_args_task_default:
   #     dest: 'Z:/DMR录播/{taskname}'
   #     delay: 0
   #
-  # ❏ 备选 C：上传成功才删本地弹幕版（需要自建脚本）
-  #     ⚠️ 复杂逻辑不能直接写进 command——PowerShell 的 {} 花括号会被程序的
-  #        关键字替换吃掉，必须写成独立脚本文件，把 {path} 作为参数传入
-  #     脚本示例 D:/DMR/upload_dm.ps1：
+  # ❏ 备选 C：用 clean 的 custom 调外部脚本（注意：上传已经在 uploader 里做了，
+  #     这里通常不再需要）
   #         param([string]$p)
-  #         rclone copy $p "123pan:DMR录播" --retries 5
+  #         rclone copy $p "cd2:百度网盘/DMR录播" --retries 5
   #         if ($LASTEXITCODE -eq 0) { Remove-Item -LiteralPath $p }
   # dm_video:
   #   - method: custom

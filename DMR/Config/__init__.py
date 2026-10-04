@@ -82,8 +82,25 @@ class Config():
             if common_args.get('auto_upload'):
                 global_upload_args = self.global_config['upload_args']
                 replay_config['upload_args'] = {}
-                if _replay_config.get('upload_args'):
-                    for upload_file_types, upload_args in _replay_config['upload_args'].items():
+
+                # 任务 yml 里没写 upload_args 时，用 global.yml 的「任务级默认」，
+                # 省得给每个任务都抄一遍。写法参考 clean_args_task_default。
+                # 任务写了就以任务为准（不再合并，避免两个来源混在一起难以排查）。
+                task_upload_args = _replay_config.get('upload_args') \
+                    if isinstance(_replay_config.get('upload_args'), dict) else None
+                if not task_upload_args:
+                    task_upload_args = self.global_config.get('upload_args_task_default') \
+                        if isinstance(self.global_config.get('upload_args_task_default'), dict) \
+                        else None
+                if not task_upload_args:
+                    self.logger.warning(
+                        f'{filename_to_taskname(config_path)}: auto_upload 已开启，'
+                        f'但任务没写 upload_args、global.yml 也没有 upload_args_task_default，'
+                        f'本次不会有任何上传。'
+                    )
+
+                if task_upload_args:
+                    for upload_file_types, upload_args in task_upload_args.items():
                         if isinstance(upload_args, dict):
                             upload_args = [upload_args]
                         replay_config['upload_args'][upload_file_types] = []
@@ -96,13 +113,21 @@ class Config():
                             if not target:
                                 engine = upload_arg.get('engine')
                                 for name, cfg_default in global_upload_args.items():
+                                    if name == 'upload_args_task_default':
+                                        continue
                                     if isinstance(cfg_default, dict) and cfg_default.get('engine') == engine:
                                         target = name
                                         break
                                 else:
                                     target = 'bilibili'
                             if not global_upload_args.get(target):
-                                raise ValueError(f'不存在可用的上传目标 {target}.')
+                                # 没配置这个上传目标（比如 global.yml 里删掉了 bilibili 段）
+                                # 就跳过这一份，而不是报错中断任务
+                                self.logger.warning(
+                                    f'{filename_to_taskname(config_path)}: 上传目标 {target} 未在 '
+                                    f'global.yml 的 upload_args 中配置，跳过这一份上传。'
+                                )
+                                continue
                             upload_config = deepcopy(global_upload_args[target])
                             upload_config.update(upload_arg)
                             replay_config['upload_args'][upload_file_types].append(upload_config)

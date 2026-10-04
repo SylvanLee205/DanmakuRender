@@ -330,12 +330,14 @@ class LiveEvents(BaseEvents):
                         self.state_dict[video.group_id][idx][vtype]['file'] = video
         
         ret_msgs = []
+        # 注意顺序：先提交上传任务，再跑清理。
+        # 清理已经和上传解耦（只看文件自己 ready 没有），
+        # 所以这里能在 dm_video 渲染完成的**同一时刻**就把原视频删掉，
+        # 不必等上传结果。
         if self.config['common_event_args'].get('auto_upload'):
             upload_msgs = self._check_for_upload(video.group_id)
             ret_msgs += upload_msgs
 
-        # 如果启用了自动清理，即使不启用上传，在渲染完成后也尝试触发清理
-        # 这样本地存档场景下，渲染完弹幕版后就能立即删除原视频和弹幕文件
         if self.config['common_event_args'].get('auto_clean'):
             clean_msgs = self._check_for_clean(video.group_id)
             ret_msgs += clean_msgs
@@ -343,12 +345,25 @@ class LiveEvents(BaseEvents):
         return ret_msgs
     
     def _check_for_clean(self, group_id=None):
+        """按 clean_args 清理文件。
+
+        魔改说明（与上传器解耦）：
+            原版逻辑是「启用上传时，必须 uploaded 才清理」，也就是
+                「上传成功 → 才删原视频」。
+            这会导致上传失败时原视频一直堆积。
+
+            现在改成：**清理只看文件自己是否就绪，和上传状态完全无关**。
+              - src_video 录制完（或转码完）就 ready  → 立即按规则删除
+              - dm_video 渲染完就 ready               → 立即按规则处理（默认留存）
+            上传成功或失败都不影响清理。想让弹幕版"上传后才删"，
+            就在它的 clean_args 里配 method: delete，配合上传器的行为自己权衡。
+
+            状态说明：处理过的文件会被标成 'cleaned'，不会重复清理。
+        """
         ret_msgs = []
         clean_args = self.config['clean_args']
         if not clean_args:
             return ret_msgs
-
-        auto_upload_enabled = self.config['common_event_args'].get('auto_upload', False)
 
         # 如果传入了 group_id，只处理指定组；否则处理所有组
         iter_groups = [(group_id, self.state_dict[group_id])] \
@@ -358,16 +373,13 @@ class LiveEvents(BaseEvents):
         for _gid, video_states in iter_groups:
             for idx, video_state in enumerate(video_states):
                 for vtype, info in video_state.items():
-                    # 判断当前状态是否满足清理条件
-                    # 启用上传：必须 uploaded 才清理
-                    #   upload_skipped = 命中跳过规则，该传的都处理完了，同样可以清理
-                    # 不启用上传：ready 就可以清理（本地存档场景）
-                    if auto_upload_enabled:
-                        if info['status'] not in ('uploaded', 'upload_skipped'):
-                            continue
-                    else:
-                        if info['status'] != 'ready':
-                            continue
+                    # 解耦后的判定：只要这个文件自己已经就绪（录制/渲染完成）就清理。
+                    #   ready          = 就绪，等上传（或不需要上传）
+                    #   upload_skipped = 命中跳过上传规则，同样算就绪
+                    # 注意必须把 upload_skipped 也认作可清理，否则命中跳过规则的文件
+                    # 会停在 upload_skipped 状态，**永远清理不掉**（原视频会一直堆积）。
+                    if info['status'] not in ('ready', 'upload_skipped'):
+                        continue
 
                     file_handled = False
                     for clean_file_types, clean_arg in clean_args.items():
@@ -423,6 +435,13 @@ class LiveEvents(BaseEvents):
         return ret_msgs
     
     def _free_state_memory(self):
+        """释放已处理完的视频组状态（只影响内存，和文件清理无关）。
+
+        final_status 的含义是"这一组的所有文件最终会停在这个状态"：
+            没开清理 → 停在上传完成（或 ready）
+            开了清理 → 停在 cleaned
+        upload_skipped（命中跳过上传规则）等价于 uploaded。
+        """
         final_status = 'ready'
         if self.config['common_event_args'].get('auto_upload'):
             final_status = 'uploaded'

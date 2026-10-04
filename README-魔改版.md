@@ -147,10 +147,10 @@ TypeError: argument of type 'NoneType' is not iterable
 ### 8. 【新增】高质量大文件「跳过上传」规则
 
 用途：横屏、高码率、高帧率的录播体积太大，不值得上传（占带宽/占网盘空间）。
-命中规则就整组跳过上传（**B站和网盘都不传**）。
+命中规则就跳过上传（不传百度网盘）。
 
 **关键点：跳过上传不影响本地文件** ——
-原视频照常按 `clean_args` 删除，弹幕版留存（不上传也不删）。
+原视频照常按 `clean_args` 删除，弹幕版留存。
 
 配置在 `configs/global.yml` → `render_args.dmrender.skip_upload_rule`（**当前已开启**）：
 
@@ -164,7 +164,7 @@ skip_upload_rule:
   skip_min_matches: 1          # 命中 1 个条件就跳过
 ```
 
-**当前生效的规则（横屏必选模式）= 横屏 且 (码率≥2500 或 帧率≥40) 就跳过上传。**
+**当前生效的规则 = 横屏 且 (码率≥2500 或 帧率≥40) 就跳过上传。**
 
 实测判定结果：
 
@@ -195,11 +195,9 @@ skip_upload_rule:
 **数据缺失时的行为（fail-open）**：任何一项探测不到（分辨率/码率/帧率），
 都**不会**导致跳过，只会在日志里写明原因。宁可多传也不误跳过。
 
-**内部实现要点**：跳过时状态会标成 `upload_skipped` 而不是停在 `ready`。
-这是必须的 —— 清理逻辑要求状态为 `uploaded` 才清理，如果只是"不提交上传任务"，
-原视频会永远删不掉。`upload_skipped` 被当作"该传的都处理完了"。
-另外 `onLiveSegment` / `onLiveEnd` 里补了一次 `_check_for_clean` 调用，
-因为跳过上传不会产生 `onUploadEnd` 事件。
+**状态机要点**：跳过时状态标成 `upload_skipped`。
+而 `_check_for_clean` 必须把 `upload_skipped` **也认作可清理状态**，
+否则命中跳过规则的文件会永远清理不掉、原视频一直堆积（这个 bug 实测踩到过）。
 
 **验证脚本**：
 ```powershell
@@ -212,7 +210,61 @@ python tools\test_skip_upload_flow.py    # 状态机 + 清理联动集成测试
 > 如果你的任务没开上传（当前 31 个任务都是 `auto_upload: False`），规则不会被触发。
 > 想让它生效，需要在任务 yml 里打开 `auto_upload`。
 
-### 9. 【文档】`.gitignore` 补上敏感信息
+### 9. 【重构】清理与上传完全解耦
+
+**原版逻辑**（有问题）：
+
+```
+上传成功 → 才删原视频
+```
+后果：上传失败时原视频一直堆积；上传写在清理规则里，两件事纠缠在一起。
+
+**魔改版逻辑**：
+
+```
+弹幕版渲染完成 ─┬─ 原视频 .mkv  → 立即按 clean_args 删除（不等上传）
+                ├─ 弹幕版 .mp4  → 立即提交上传（rclone 传百度网盘）
+                └─ 弹幕版 .mp4  → 本地保留（做备份）
+
+上传成功/失败 都不影响上面的清理行为
+```
+
+**具体改动**：
+
+1. `_check_for_clean` 的判定条件从「uploaded 才清理」改成
+   「文件自己 ready（或 upload_skipped）就清理」，与上传状态无关。
+2. 清理规则里**不再包含 rclone 上传命令** —— 上传移到 uploader 负责。
+   `clean_args_task_default` 现在只有 `src_video: delete`，弹幕版不配规则 = 本地保留。
+3. 新增 `upload_args_task_default`（对标 `clean_args_task_default`）：
+   任务 yml 没写 `upload_args` 时从这里继承，31 个任务不用各抄一遍。
+4. `onRenderEnd` 里的顺序是「先提交上传，再跑清理」，
+   所以在弹幕版渲染完成的**同一时刻**原视频就被删掉了。
+
+**踩过的坑**：`upload_skipped` 必须被认作可清理状态，否则命中跳过规则的文件
+会停在 `upload_skipped`、永远清理不掉（原视频一直堆积）。实测验证过。
+
+### 10. 【移除】B站上传段
+
+`upload_args` 里的 `bilibili` 段已删除（同时从 `configs/global.yml` 和
+`DMR/Config/default.yml` 删，否则会被 `merge_dict` 合并回来）。
+
+- 任务 yml 里如果还写着 `target: bilibili`：**自动跳过并打 warning**，不会报错中断
+- 想恢复：从官方 `default.yml` 或 git 历史里把 `bilibili` 段拷回来即可
+- `tools/biliup.exe`（26.8MB）**保留** —— 它只被 B站上传用到，
+  但现在上传没开所以不会运行；删掉反而会触发自动安装逻辑弹窗卡住
+
+### 11. 【修正】rclone remote 名
+
+原配置注释里写的是 `123pan`，但你实际的百度网盘 remote 是 **`cd2`**：
+
+| remote | 是什么 |
+|---|---|
+| `cd2:` | **百度网盘**（WebDAV，12TB，已用 7TB）← 正确目标 |
+| `123pan:` | 另一个 123云盘的 remote，不是百度网盘 |
+
+已全部改成 `cd2:百度网盘/DMR录播/{TASKNAME}`，并实测上传成功。
+
+### 12. 【文档】`.gitignore` 补上敏感信息
 
 新增忽略 `rclone.conf` 和 `.login_info/`，避免网盘密码和 B站 cookie 被推到 GitHub。
 

@@ -295,66 +295,6 @@ uploader_kernel_args:
 # 上传器默认参数
 upload_args:
   # 上传到B站
-  bilibili:
-    # 上传引擎，目前只支持biliuprs
-    engine: biliuprs
-    # 上传账号名称，程序依靠这个来识别不同的账号，如果打算传不同账号就要设置不同的名称
-    account: bilibili
-    # 上传cookies路径，如果设置为空将会保存到./login_info/{ACCOUNT}.json
-    cookies: ~
-    # 任务级上传锁，此功能保证同一个任务中的上传是串行的从而保证视频顺序，默认True
-    # 如果设置为False，那么除第一个视频外其他所有上传任务将会完全并行
-    # 对非实时上传的任务无效
-    task_upload_lock: True
-    # 重试次数，如果上传遇到错误将会重试，设置为0表示不重试
-    # 注意：重试会整个视频重传，并且阻塞后面视频的上传，不应该设置太大
-    retry: 3
-    # 上传超时时间（秒），如果上传时间超过这个时间将会被强制终止（用于防止biliup卡死），0表示不限制
-    timeout: 0
-    # 实时上传（边录边传），每录制一个分段上传一次，同一场直播的不同分P仍然会在一个视频下，默认开启
-    # 注意：实时上传可能无法上传很短的视频，尤其是在网速较快的情况下（B站对修改稿件的间隔有限制）
-    realtime: True
-    # 上传的视频最短长度，小于此长度的视频会被自动过滤，默认120s
-    min_length: 120
-    # 以下参数来自biliuprs，详细内容可以参考 https://biliup.github.io/biliup-rs/index.html
-    # 上传线路，设置为空则由biliuprs自动选择
-    line: ~
-    # 上传线程数
-    limit: 3
-    # 是否为转载视频 1-自制 2-转载
-    copyright: 1
-    # 转载来源，转载视频必填
-    source: ''
-    # 分区号，分区参考 https://biliup.github.io/tid-ref.html
-    tid: 65
-    # 封面，指向本地文件地址
-    cover: ''
-    # 标题，可以使用关键字替换
-    # 默认的例子：[飞天狙想要努力变胖/直播回放] 晚上七点半比赛 2023年2月24日 （带弹幕版）
-    title: '[{STREAMER.NAME}/直播回放] {TITLE} {CTIME.YEAR}年{CTIME.MONTH:02d}月{CTIME.DAY:02d}日'
-    # 简介，可以使用关键字替换
-    desc: |
-      {STREAMER.NAME} 的直播回放
-      标题：{TITLE} 
-      时间：{CTIME.YEAR}年{CTIME.MONTH:02d}月{CTIME.DAY:02d}日
-      直播地址：{STREAMER.URL} 
-
-      ————————————
-      由DanmakuRender录制：
-      https://github.com/SmallPeaches/DanmakuRender
-    # 动态内容，可以使用关键字替换
-    dynamic: '{STREAMER.NAME} 的直播回放，{CTIME.YEAR}年{CTIME.MONTH:02d}月{CTIME.DAY:02d}日'
-    # 标签（一定要有！多个标签逗号分割）
-    tag: '直播回放'
-    # 延迟发布，单位秒，如果需要的话至少设置14400秒（4个小时）
-    dtime: 0
-    # 是否开启杜比音效? 0-关闭 1-开启
-    dolby: 0
-    # 允许转载? 0-允许转载，1-禁止转载
-    no_reprint: 1
-    # 是否开启充电? 0-关闭 1-开启
-    open_elec: 1
-
   # 上传到网盘（rclone 子进程）
   # 本魔改版用 rclone 替代了官方的 YouTube 上传，并合并了官方的 custom（完全自定义）上传
   # 详细说明见 configs/global.yml 里的 upload_args.rclone 段
