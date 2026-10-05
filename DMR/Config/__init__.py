@@ -54,18 +54,31 @@ class Config():
             self.replay_config_path_raw = [self.replay_config_path_raw]
 
     def add_task_config(self, config_path):
+        # ⚠️ hash 只在**成功加载之后**才记进 self.file_hashes。
+        # 原来的写法是拿到 hash 立刻记下（在可能失败的分支之前），
+        # 导致：加载失败 → replay_config 里没有这个任务，但 file_hashes 里
+        # 已经有它的 hash → check_update 认为"文件没变"→ **永不重试**，
+        # 这个主播就彻底不录了，而且只有启动时一条 ERROR 日志（2026-10-05 审查发现）。
+        pending_hash = None
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
                 _replay_config = yaml.safe_load(f)
-            
-            current_hash = self._get_file_hash(config_path)
-            self.file_hashes[config_path] = current_hash
-            
+
+            pending_hash = self._get_file_hash(config_path)
+            if _replay_config is None:
+                # 空文件/只有注释：不算配置错误，但也别记 hash（下次还能读）
+                self.logger.error(f'配置文件内容为空，已跳过: {config_path}')
+                return None
+
             taskname = filename_to_taskname(config_path)
             replay_config = {}
-            
+
             common_args = _replay_config.get('common_event_args')
-            if not common_args: return None
+            if not common_args:
+                self.logger.error(
+                    f'配置文件缺少 common_event_args，任务被跳过（会持续重试）: {config_path}'
+                )
+                return None
             replay_config['common_event_args'] = deepcopy(common_args)
             
             global_download_args = self.global_config['download_args']
@@ -166,10 +179,15 @@ class Config():
                         replay_config['clean_args'][clean_file_types].append(clean_config)
 
             self.replay_config[taskname] = deepcopy(replay_config)
+            # 到这里才算真正加载成功，此时才记 hash
+            if pending_hash is not None:
+                self.file_hashes[config_path] = pending_hash
             return taskname
         except Exception as e:
             self.logger.error(f"Error loading config {config_path}:")
             self.logger.exception(e)
+            # 故意不记 hash：下次 check_update 会再次尝试加载，
+            # 用户修好配置后无需重启程序即可生效。
             return None
 
     def check_update(self):
@@ -211,8 +229,17 @@ class Config():
         for f in current_files & old_files:
             try:
                 current_hash = self._get_file_hash(f)
-                if current_hash != self.file_hashes.get(f) and self.add_task_config(f):
-                    updated_tasks.append(f)
+                # ⚠️ 两个条件都要重试：
+                #   1) 文件内容变了
+                #   2) **文件没变、但它不在 replay_config 里** —— 说明上次加载失败。
+                #      这条是为了让"配置写错了"的任务在修好后能自动恢复，
+                #      不用重启程序（原来 hash 相同时永不重试，任务会永久消失）。
+                t = filename_to_taskname(f)
+                if current_hash != self.file_hashes.get(f) or t not in self.replay_config:
+                    if t not in self.replay_config:
+                        self.logger.warning(f'任务 {t} 尚不在运行时配置中，尝试重新加载。')
+                    if self.add_task_config(f):
+                        updated_tasks.append(f)
             except Exception:
                 pass
         

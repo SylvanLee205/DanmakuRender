@@ -67,17 +67,27 @@ class SubprocessUploader:
         self.procs = {}
         self.logger = logging.getLogger(__name__)
 
-    def _sanitize_rclone_copy(self, cmds: list, file) -> list:
-        """把 `rclone copy <src> <dst目录>` 改写成 `rclone copyto <src> <dst目录>/<干净名>`。
+    # rclone 里「整目录传输」的子命令 → 「指定目标名传输」的对应子命令
+    #   copy → copyto   （上传后保留本地）
+    #   move → moveto   （上传后删本地）
+    # ⚠️ 必须两个都覆盖：漏掉 move 时带 emoji 的文件名不会被清洗 → 百度返回
+    # errno -7，但 rclone 退出码仍是 0 → DMR 判成功；而 move 的语义是传完删源，
+    # 结果**本地和云端同时没有**（比 copy 漏清洗更严重）。2026-10-05 审查发现。
+    _TO_SINGLE_TARGET = {'copy': 'copyto', 'move': 'moveto'}
 
-        只在「命令是 rclone copy、且目标文件名含 emoji」时才动，其它情况原样返回。
+    def _sanitize_rclone_copy(self, cmds: list, file) -> list:
+        """把 `rclone copy|move <src> <dst目录>` 改写成
+        `rclone copyto|moveto <src> <dst目录>/<干净文件名>`。
+
+        只在「命令是 rclone copy/move、且目标文件名含 emoji」时才动，其它情况原样返回。
         """
         try:
             if len(cmds) < 4:
                 return cmds
             if not os.path.basename(str(cmds[0])).lower().startswith('rclone'):
                 return cmds
-            if str(cmds[1]) != 'copy':
+            sub = str(cmds[1])
+            if sub not in self._TO_SINGLE_TARGET:
                 return cmds
 
             src, dst = str(cmds[2]), str(cmds[3])
@@ -87,11 +97,12 @@ class SubprocessUploader:
 
             safe = safe_remote_name(remote_name)
             target = dst.rstrip('/') + '/' + safe
+            single = self._TO_SINGLE_TARGET[sub]
             self.logger.warning(
                 f'远程文件名含 emoji（百度网盘 API 会拒绝），已自动改名为: '
-                f'{remote_name}  ->  {safe}'
+                f'{remote_name}  ->  {safe}  （子命令 {sub} → {single}）'
             )
-            return [cmds[0], 'copyto', src, target] + list(cmds[4:])
+            return [cmds[0], single, src, target] + list(cmds[4:])
         except Exception as e:
             self.logger.debug(f'文件名清洗跳过（不影响上传）: {e}')
             return cmds

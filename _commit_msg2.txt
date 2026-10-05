@@ -1,0 +1,63 @@
+代码审查后修复：3 个 P0 + error 事件状态收敛（消除 1.76GB 滞留）
+
+三个并行审查员发现的问题，逐条验证后修复：
+
+【P0-1 · DMR/Render/ffmpeg.py】call_ffmpeg() 完全不看 ffmpeg 退出码
+  self.render_proc.wait() 的返回值直接丢掉，改成靠日志里有没有 "video:" 猜成功。
+  只要 ffmpeg 打印过 Stream mapping 段再失败就被判成功 → 0 字节/残缺产物继续
+  往下游走。debug=True 时更是无条件 return True。
+  这是 2026-10-05 libopus 事故「失败渲染被当成功、然后清理删掉源视频」的根源。
+  改为 returncode = wait()，非 0 即失败，并把日志尾部（真正的报错）作为 detail。
+
+【P0-2 · DMR/Render/dmrender.py】渲染产物无 0 字节校验
+  ffmpeg 先创建输出文件再失败会留下 0 字节垃圾，下游当成品处理。
+  现在发现 0 字节就删除残留并判失败（源视频保留），失败分支也清理半成品。
+
+【P0-3 · DMR/Config/__init__.py】任务加载失败后被永久静默丢弃
+  file_hashes 在可能失败的分支之前就赋值，导致：加载失败 → replay_config 里
+  没有该任务，但 hash 已记 → check_update 认为文件没变 → 永不重试。
+  该主播彻底不录，且只有启动时一条 ERROR。
+  改为 pending_hash 只在成功加载后记录，并让 check_update 对「文件存在但不在
+  replay_config 里」的任务重新尝试加载（用户修好配置后无需重启）。
+
+【S1+S2 · DMR/Task/liveevents.py】render/error 与 uploader/error 不收敛状态
+  两个 error 事件原来都走 defaultEvent，只打日志不动状态。后果：
+    - wait 里的 request_id 永远留着 → 清理的第二道防线永远挡着 → 源视频永不清理
+    - dm_video 永久停在 rendering → 第三道防线也挡着
+    - 分组永远达不到终态 → _free_state_memory 永不释放
+  实盘证据：18 次渲染错误 → 8 个 .mkv 共 1.76GB 滞留；上线至今
+  「视频信息已被释放」出现 0 次。
+  新增 onTaskError()：按 request_id 反查分组（error 事件的 data 是错误描述
+  字符串，不是 dict，所以必须遍历 state_dict），剔除 wait、把仍处于
+  rendering/uploading 的状态标成 failed（终态），并补一次清理检查。
+
+【S3】clean_arg 为 null 时假报 cleaned
+  file_handled = True 原来在派发之前就置位，遇到 clean_args 值类型不对
+  （YAML 里 `src_video:` 留空 → None）时静默 continue，结果状态被标成 cleaned
+  却没派发任何清理任务 → 文件永久留盘、状态却说已处理、线索全失。
+  改为确认要派发时才置位，类型错误打 ERROR。
+
+【S4】_free_state_memory 从不释放分组
+  原来用单一全局 final_status 要求所有 vtype 都达到它，但「clean_args 只配了
+  src_video、没配 dm_video」时 dm_video 永远停在 ready ≠ cleaned → 永不释放。
+  改为按 vtype 分别判定终态：有清理规则的看 cleaned，没有的看
+  uploaded/upload_skipped/ready，failed 一律算终态。
+
+【M7/L8】_check_for_clean 的健壮性
+  video_state['src_video_pre'] 无保护会 KeyError，而 KeyError 会冒泡打断整批
+  清理、已执行的副作用无法回滚（那些文件此后永不清理）。改用 .get()；
+  method/delay 缺键也单独兜住并明确报错。
+
+【P0-2' · DMR/Uploader/subprocess_uploader.py】漏掉 rclone move
+  _sanitize_rclone_copy 原来只认 copy。若用户按 global.yml 注释改用 move，
+  带 emoji 的文件名不被清洗 → 百度 errno -7 → rclone 退出码仍为 0 → DMR 判成功；
+  而 move 的语义是传完删源 → 本地和云端同时没有。现在 copy→copyto、
+  move→moveto 都覆盖。
+
+新增回归测试 tools/test_task_error_converge.py（13 个断言，全通过）。
+新增工具：find_orphan_sources.py（找滞留源文件）、rerender_failed.py
+（重新渲染失败的源文件）、verify_all_fixes.py（验证修复生效）。
+
+实战验证：用修复后的代码重新渲染了之前 libopus 失败的 2 个源文件
+（苏苏没烦恼 11.8MB、哭哭不嘻嘻 8.0MB），10 秒/6 秒全部成功并上传，
+云端字节一致。之前它们对应的 0 字节空壳文件已在上一次清理中删除。

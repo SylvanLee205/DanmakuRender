@@ -30,23 +30,30 @@ class RawFFmpegRender(BaseRender):
                 self.render_proc = subprocess.Popen(
                     ffmpeg_args, stdin=subprocess.PIPE, stdout=logfile, stderr=subprocess.STDOUT, bufsize=10**8)
 
-            self.render_proc.wait()
-            if self.debug:
-                return True, ''
+            # ⚠️ 必须读退出码！原版把 wait() 的返回值丢了，改成靠日志里有没有
+            # "video:" 来猜成功 —— 只要 ffmpeg 打印过 Stream mapping 段再失败，
+            # 就被判成成功，0 字节/残缺产物继续往下游走（2026-10-05 的 libopus
+            # 事故正是这样把失败渲染当成功，然后清理逻辑删掉了源视频）。
+            returncode = self.render_proc.wait()
 
-            info = None
             log = ''
             logfile.seek(0)
             for line in logfile.readlines():
-                line = line.decode('utf-8', errors='ignore').strip()
-                log += line + '\n'
-                if 'video:' in line:
-                    info = line
+                log += line.decode('utf-8', errors='ignore').strip() + '\n'
 
-            if info:
+            if returncode == 0:
+                # 成功时把 Stream mapping 里的视频行作为 detail 返回（日志用）
+                info = ''
+                for line in log.split('\n'):
+                    if 'video:' in line:
+                        info = line.strip()
                 return True, info
-            else:
-                return False, log
+
+            # 失败：日志尾部比整段日志更有用（真正的报错在最后）
+            if self.debug:
+                return False, f'ffmpeg 退出码 {returncode}（debug 模式，完整输出见终端）'
+            tail = '\n'.join(log.strip().split('\n')[-30:])
+            return False, f'ffmpeg 退出码 {returncode}\n{tail}'
             
     def render_one(self, cmds, **kwargs):
         start_time = datetime.now()

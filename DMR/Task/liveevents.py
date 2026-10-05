@@ -20,9 +20,9 @@ class LiveEvents(BaseEvents):
             'downloader/liveend': self.onLiveEnd,
             'downloader/livestop': self.onLiveEnd,
             'render/end': self.onRenderEnd,
-            'render/error': self.defaultEvent,
+            'render/error': self.onTaskError,
             'uploader/end': self.onUploadEnd,
-            'uploader/error': self.defaultEvent,
+            'uploader/error': self.onTaskError,
             'cleaner/end': self.defaultEvent,
             'cleaner/error': self.defaultEvent,
             'default': self.defaultEvent,
@@ -30,6 +30,58 @@ class LiveEvents(BaseEvents):
     
     def defaultEvent(self, message:PipeMessage):
         self.logger.info(f'{self.name}: {message.msg}')
+
+    def onTaskError(self, message:PipeMessage):
+        """渲染 / 上传失败时的状态收敛（render/error、uploader/error）。
+
+        ⚠️⚠️ 为什么必须收敛状态（2026-10-05 审查发现的活体泄漏）：
+            原来 render/error 和 uploader/error 都走 defaultEvent，
+            只打一行日志、**完全不动状态**。后果：
+              1) wait 里的 request_id 永远留着 → _check_for_clean 的第二道
+                 防线（wait 非空不清理）永远挡着 → **源视频永不清理**
+              2) dm_video 永久停在 'rendering' → 第三道防线也永远挡着
+              3) 该分组永远达不到终态 → _free_state_memory 永不释放 → 内存泄漏
+            实盘证据：18 次渲染错误 → 8 个 .mkv 共 1.76GB 永久滞留在磁盘；
+            上线至今「视频信息已被释放」出现 0 次。
+
+        修复做法：把失败的 request_id 从 wait 里剔除，把该 vtype 置成 'failed'
+        （算终态，允许清理源文件、允许释放分组），然后补一次清理检查，
+        免得这个失败的文件要等到下播才被处理。
+
+        注意：error 事件的 `data` 是**错误描述字符串**（不是 dict），
+        分组只能靠 request_id 反查 —— 所以这里遍历全部 state_dict。
+        """
+        self.logger.warning(f'{self.name}: {message.msg}')
+
+        request_id = message.request_id
+        ret_msgs = []
+        touched_groups = set()
+
+        if request_id is not None:
+            for group_id, states in list(self.state_dict.items()):
+                for video_state in states:
+                    for vtype, info in video_state.items():
+                        if request_id not in (info.get('wait') or []):
+                            continue
+                        info['wait'].remove(request_id)
+                        touched_groups.add(group_id)
+                        # wait 清空且仍停在"进行中"的状态 → 标 failed（终态）
+                        if not info.get('wait') and info.get('status') in (
+                                'rendering', 'uploading'):
+                            info['status'] = 'failed'
+                            self.logger.warning(
+                                f'{self.name}: {vtype} 标记为 failed（任务失败，不再等待），'
+                                f'文件: {getattr(info.get("file"), "path", "?")}'
+                            )
+
+        # 失败的文件也要走一次清理判定，别等到下播
+        if self.config['common_event_args'].get('auto_clean'):
+            for group_id in touched_groups:
+                try:
+                    ret_msgs += self._check_for_clean(group_id)
+                except Exception as e:
+                    self.logger.error(f'{self.name}: 失败文件清理判定出错: {type(e).__name__}: {e}')
+        return ret_msgs
 
     def onReady(self, *args, **kwargs):
         return PipeMessage(
@@ -378,9 +430,12 @@ class LiveEvents(BaseEvents):
                     # 解耦后的判定：只要这个文件自己已经就绪（录制/渲染完成）就清理。
                     #   ready          = 就绪，等上传（或不需要上传）
                     #   upload_skipped = 命中跳过上传规则，同样算就绪
+                    #   failed         = 渲染/上传失败（onTaskError 标的终态）。
+                    #                    也必须允许清理，否则失败的文件会永远滞留
+                    #                    —— 2026-10-05 实测 8 个 .mkv/1.76GB 就是这么积的。
                     # 注意必须把 upload_skipped 也认作可清理，否则命中跳过规则的文件
                     # 会停在 upload_skipped 状态，**永远清理不掉**（原视频会一直堆积）。
-                    if info['status'] not in ('ready', 'upload_skipped'):
+                    if info['status'] not in ('ready', 'upload_skipped', 'failed'):
                         continue
 
                     # ⚠️⚠️ 第二道保护：只要这个文件还有没跑完的异步任务，就先不动它。
@@ -420,8 +475,6 @@ class LiveEvents(BaseEvents):
                         if vtype not in clean_file_types.split('+') and clean_file_types != 'all':
                             continue
 
-                        file_handled = True
-
                         # 兼容两种 YAML 写法：
                         #   列表式（推荐）: src_video: [{method: delete, delay: 0}, ...]
                         #   对象式（简写）  : src_video: {method: delete, delay: 0}
@@ -430,22 +483,52 @@ class LiveEvents(BaseEvents):
                         elif isinstance(clean_arg, dict):
                             arg_iter = [clean_arg]
                         else:
+                            # ⚠️ 配置写错了（例如 `src_video:` 后面留空 → None）。
+                            # 原来这里静默 continue，但 file_handled 已经在上面被置 True，
+                            # 结果状态被标成 'cleaned' 却没有派发任何清理任务
+                            # → 文件永久留盘、状态却显示已处理、线索全失（2026-10-05 审查发现）。
+                            # 现在：明确报警，并且**不置 file_handled**，让状态保持可重试。
+                            self.logger.error(
+                                f'{self.name}: clean_args 里 {clean_file_types} 的值类型不对'
+                                f'（{type(clean_arg).__name__}），应为 list 或 dict。'
+                                f'该规则被忽略，文件不会被清理。'
+                            )
                             continue
+
+                        # 确认真的要派发清理任务了，才置 file_handled
+                        file_handled = True
 
                         for arg in arg_iter:
                             files = [info['file']]
                             # 判断是否需要连带清理源文件（dm_video → src_video + 弹幕）
+                            # ⚠️ 一律用 .get() 取值：video_state 未必含全部 vtype
+                            # （不同 dltype/转码配置下结构不同），直接下标会 KeyError，
+                            # 而 KeyError 会冒泡打断整批清理、且已执行的副作用无法回滚
+                            # —— 那些文件此后永不清理（2026-10-05 审查发现的 M7/L8）。
+                            src_info = video_state.get('src_video') or {}
                             if vtype == 'dm_video' and arg.get('w_srcfile', False) == True \
-                                    and video_state['src_video']['file'] is not None \
-                                    and video_state['src_video']['status'] != 'cleaned':
-                                files.append(video_state['src_video']['file'])
-                                video_state['src_video']['status'] = 'cleaned'
+                                    and src_info.get('file') is not None \
+                                    and src_info.get('status') != 'cleaned':
+                                files.append(src_info['file'])
+                                src_info['status'] = 'cleaned'
                             # 判断是否需要连带清理转码前源文件
+                            srcpre_info = video_state.get('src_video_pre') or {}
                             if vtype == 'src_video' and arg.get('w_srcpre', True) == True \
-                                    and video_state['src_video_pre']['file'] is not None \
-                                    and video_state['src_video_pre']['status'] != 'cleaned':
-                                files.append(video_state['src_video_pre']['file'])
-                                video_state['src_video_pre']['status'] = 'cleaned'
+                                    and srcpre_info.get('file') is not None \
+                                    and srcpre_info.get('status') != 'cleaned':
+                                files.append(srcpre_info['file'])
+                                srcpre_info['status'] = 'cleaned'
+
+                            # ⚠️ method/delay 缺键会让整批清理中断，这里单独兜住
+                            try:
+                                method = arg['method']
+                                delay = arg['delay']
+                            except KeyError as e:
+                                self.logger.error(
+                                    f'{self.name}: clean_args 规则缺少 {e}，该规则被跳过。'
+                                    f'规则内容: {arg}'
+                                )
+                                continue
 
                             clean_msg = PipeMessage(
                                 source=self.name,
@@ -455,8 +538,8 @@ class LiveEvents(BaseEvents):
                                 data={
                                     'taskname': self.name,
                                     'files': files,
-                                    'method': arg['method'],
-                                    'delay': arg['delay'],
+                                    'method': method,
+                                    'delay': delay,
                                     'args': arg,
                                 }
                             )
@@ -470,26 +553,58 @@ class LiveEvents(BaseEvents):
     def _free_state_memory(self):
         """释放已处理完的视频组状态（只影响内存，和文件清理无关）。
 
-        final_status 的含义是"这一组的所有文件最终会停在这个状态"：
-            没开清理 → 停在上传完成（或 ready）
-            开了清理 → 停在 cleaned
-        upload_skipped（命中跳过上传规则）等价于 uploaded。
+        终态判定**按 vtype 分别算**（2026-10-05 修复）：
+
+        原来是用一个全局 final_status 要求所有 vtype 都达到它，这在
+        「clean_args 只配了 src_video、没配 dm_video」时**永远不可能成立**：
+            src_video → cleaned（有清理规则，是终态）
+            dm_video  → 永远停在 ready（没有清理规则，到不了 cleaned）
+        → need_free 永远 False → **分组永不释放**。
+        实盘证据：上线至今「视频信息已被释放」出现 0 次、「处理超时」0 次。
+
+        现在的规则：每个 vtype 看它**自己**能到达的终态：
+            有对应的 clean_args 规则 → 终态是 cleaned
+            没有规则                 → 终态是 uploaded / upload_skipped / ready
+        另外 'failed'（渲染/上传失败）一律算终态，否则失败的分组会永久占内存。
         """
-        final_status = 'ready'
-        if self.config['common_event_args'].get('auto_upload'):
-            final_status = 'uploaded'
-        if self.config['common_event_args'].get('auto_clean'):
-            final_status = 'cleaned'
-        
+        auto_upload = bool(self.config['common_event_args'].get('auto_upload'))
+        auto_clean = bool(self.config['common_event_args'].get('auto_clean'))
+        clean_args = self.config.get('clean_args') or {}
+
+        def terminal_statuses(vtype):
+            """返回该 vtype 被认为"处理完了"的状态集合。"""
+            # 失败是终态（onTaskError 标的）——不释放就永远占内存
+            term = {'failed', 'cleaned', None}
+            if not auto_clean:
+                # 没开清理：上传完成（或本来就 ready）就算完了
+                term |= {'uploaded', 'upload_skipped', 'ready'}
+                return term
+            # 开了清理：看这个 vtype 有没有生效的清理规则
+            has_rule = False
+            for clean_file_types, clean_arg in clean_args.items():
+                if clean_file_types == 'all' or vtype in clean_file_types.split('+'):
+                    if isinstance(clean_arg, (list, dict)):
+                        has_rule = True
+                        break
+            if has_rule:
+                term.add('cleaned')
+            else:
+                # 没有清理规则的 vtype（例如 dm_video 默认留存）
+                term |= {'uploaded', 'upload_skipped', 'ready'}
+            return term
+
         for group_id in list(self.ended_dict.keys()):
             need_free = True
             for idx, video_state in enumerate(self.state_dict[group_id]):
                 for vtype, info in video_state.items():
-                    # upload_skipped（命中跳过规则）等价于 uploaded，都算这一环处理完了
-                    if info['status'] is not None and info['status'] not in (final_status, 'upload_skipped'):
+                    if info.get('wait'):
                         need_free = False
                         break
-                if not need_free: break
+                    if info['status'] not in terminal_statuses(vtype):
+                        need_free = False
+                        break
+                if not need_free:
+                    break
             if need_free:
                 self.logger.debug(f'视频组{group_id}处理完成，视频信息已被释放.')
                 self.ended_dict.pop(group_id)

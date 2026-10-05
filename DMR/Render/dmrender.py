@@ -155,6 +155,25 @@ class DmRender(BaseRender):
 
         start_time = datetime.now()
         status, info = self.render_helper(video.path, danmaku, output, **kwargs)
+
+        # ⚠️ 即使 ffmpeg 报成功也要校验产物非空。
+        # 2026-10-05 事故：ffmpeg 参数错误时先创建输出文件再失败，留下 0 字节
+        # 垃圾；下游把它当成品，上传了空文件、并让清理删掉了源视频。
+        # 现在发现 0 字节就直接删掉残留并判失败，让上层走失败分支（源视频保留）。
+        if status:
+            try:
+                out_size = os.path.getsize(output) if exists(output) else 0
+            except OSError:
+                out_size = 0
+            if out_size == 0:
+                try:
+                    if exists(output):
+                        os.remove(output)
+                except Exception as e:
+                    self.logger.warning(f'删除 0 字节产物失败 {output}: {e}')
+                return False, (f'渲染产物为 0 字节，已删除（源视频保留）。'
+                               f'通常是 ffmpeg 参数错误，ffmpeg 输出尾部:\n{str(info)[-800:]}')
+
         if status:
             output_info:VideoInfo = copy.deepcopy(video)
             output_info.dtype = 'dm_video'
@@ -166,6 +185,12 @@ class DmRender(BaseRender):
             output_info.src_video_id = video.file_id
             return status, output_info
         else:
+            # 失败时也清掉 ffmpeg 可能留下的半成品，避免冒充成品
+            try:
+                if exists(output) and os.path.getsize(output) == 0:
+                    os.remove(output)
+            except Exception:
+                pass
             return status, info
 
     def stop(self):
