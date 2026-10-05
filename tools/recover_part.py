@@ -45,7 +45,7 @@ from os.path import basename, dirname, exists, isfile, join, splitext
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-DEFAULT_MIN_AGE_MINUTES = 10
+DEFAULT_MIN_AGE_MINUTES = 2
 
 
 # ─────────────────────────── 基础工具 ───────────────────────────

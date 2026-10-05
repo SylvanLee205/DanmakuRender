@@ -22,7 +22,7 @@ from DMR import DanmakuRender
 from DMR.Config import Config
 
 
-def _startup_recover(config, logger, enabled=True, wait=False, min_age_minutes=10):
+def _startup_recover(config, logger, enabled=True, wait=False, min_age_minutes=2):
     """启动时自动检测并恢复中断录制留下的 .part 文件。
 
     为什么放在程序内部而不是 bat 里：
@@ -30,8 +30,13 @@ def _startup_recover(config, logger, enabled=True, wait=False, min_age_minutes=1
         都会执行恢复，不依赖某个特定的启动脚本。
 
     安全性（很重要）：
-        - 只处理最后修改早于 min_age_minutes 分钟的文件。
-          程序刚启动时正在录制的分段一定是很新的，所以不会被误处理。
+        - 只处理最后修改早于 min_age_minutes 分钟的文件（默认 2）。
+        - ⚠️ 阈值为什么是 2 分钟而不是 10：
+          程序启动时会先把上一次残留的 .part 扫一遍，此时 DMR 自己的下载
+          任务才刚开始拉起，不会有"正在录制中"的分段。如果阈值设 10 分钟，
+          上次崩溃/重启留下的新 .part（通常只有几分钟）就会被漏掉，
+          要等**下一次**启动才能捡回来。2 分钟既覆盖了这种情况，
+          又留出了足够的余量（单个分段通常 1 小时，绝不可能 2 分钟就写完）。
         - ffprobe 读不出来的文件一律跳过，不动它。
         - 恢复完的文件不再是 .part，天然幂等。
         - 整个过程包在 try/except 里，**任何异常都不能影响主程序启动**。
@@ -78,8 +83,8 @@ if __name__ == '__main__':
                         help='关闭启动时的中断录制(.part)自动恢复')
     parser.add_argument('--recover_wait', action='store_true',
                         help='恢复过程同步执行（等恢复渲染完再开始录制），默认后台跑')
-    parser.add_argument('--recover_min_age', type=int, default=10,
-                        help='只恢复最后修改早于 N 分钟的 .part（默认 10）')
+    parser.add_argument('--recover_min_age', type=int, default=2,
+                        help='只恢复最后修改早于 N 分钟的 .part（默认 2）')
     args = parser.parse_args()
 
     if args.version:
