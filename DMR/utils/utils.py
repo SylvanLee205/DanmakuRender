@@ -237,7 +237,21 @@ def replace_keywords(string:str, kw_info:dict=None, replace_invalid:bool=False):
     return result
 
 def replace_invalid_chars(string:str) -> str:
-    """修复不合法的文件名,来自yutto"""
+    """修复不合法的文件名,来自yutto
+
+    魔改补充（2026-10-05）：**同时移除 emoji（非 BMP 字符）**。
+
+    原因：百度网盘开放平台 API 拒绝含 emoji 的路径（errno -7），
+    而 CD2 WebDAV 收到 PUT 先回 2xx、异步上传才失败，导致
+    **rclone 退出码为 0、DMR 误判成功 → 文件静默丢失**。
+    实测证据：`相扑猫💦` 5 个文件重试 8427 次、吃掉 93GB 上行；
+    `掉了颗兔牙（9.13🎂` 18 个文件（4.8GB）从未上传成功。
+
+    在命名阶段就清理掉，好处：
+      - 本地文件名干净，B站投稿标题、其他网盘也受益
+      - 从源头避免 emoji 进入任何下游环节
+    （上传层另有 `safe_remote_name()` 兜底，处理已存在的文件和其他下载器的产出）
+    """
     filename = string
 
     def to_full_width_chr(matchobj: re.Match[str]) -> str:
@@ -256,12 +270,30 @@ def replace_invalid_chars(string:str) -> str:
     )
     # 尾部多个 .，转为省略号
     regex_dots = re.compile(r"\.+$")
+    # emoji / 非 BMP 字符，移除（baidu 开放平台 API 不接受）
+    regex_emoji = re.compile(
+        '['
+        '\U0001F000-\U0001FAFF'   # Emoji 主体
+        '\U00002600-\U000027BF'   # 杂项符号 + 装饰符号
+        '\U0001F1E6-\U0001F1FF'   # 区域指示符（国旗）
+        '\U0000FE00-\U0000FE0F'   # 变体选择符
+        '\U0000200D'              # 零宽连接符
+        '\U000020E3'              # 键帽
+        '\U00002B00-\U00002BFF'   # 其他符号与箭头
+        '\U00002190-\U000021FF'   # 箭头
+        ']+'
+    )
 
+    filename = regex_emoji.sub("", filename)
     filename = regex_path.sub(to_full_width_chr, filename)
     filename = regex_spaces.sub(" ", filename)
     filename = regex_non_printable.sub("", filename)
     filename = filename.strip()
+    # 去掉 emoji 可能留下的悬空空格括号，例如「（9.13🎂-」→「（9.13-」
+    filename = re.sub(r'([（(])\s+', r'\1', filename)
     filename = regex_dots.sub("……", filename)
+    if not filename:
+        filename = 'unnamed'
 
     return filename
 
