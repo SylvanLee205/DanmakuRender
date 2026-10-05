@@ -290,6 +290,7 @@ def recover_all(cfg=None, min_age_minutes=DEFAULT_MIN_AGE_MINUTES,
     L('=' * 70)
 
     now = time.time()
+    task_of = {}          # 恢复出的视频/渲染产物 → 真实任务名
     for p in parts:
         age_min = (now - os.path.getmtime(p)) / 60
         size_mb = os.path.getsize(p) / 1024 / 1024
@@ -340,7 +341,10 @@ def recover_all(cfg=None, min_age_minutes=DEFAULT_MIN_AGE_MINUTES,
         ok2, msg = do_recover(p, final_name, dm_src, video_fmt)
         if ok2:
             L(f'    恢复完成: {msg}')
-            result['recovered'].append(join(dirname(p), final_name))
+            rec_path = join(dirname(p), final_name)
+            result['recovered'].append(rec_path)
+            # 记住每个恢复出的文件属于哪个任务，上传时用（不能靠目录名推导）
+            task_of[rec_path] = taskname
         else:
             L(f'    恢复失败: {msg}')
 
@@ -366,14 +370,16 @@ def recover_all(cfg=None, min_age_minutes=DEFAULT_MIN_AGE_MINUTES,
             out_dir = dirname(vf) + '（弹幕版）'
             os.makedirs(out_dir, exist_ok=True)
             out = join(out_dir, splitext(basename(vf))[0] + f'（弹幕版）.{out_fmt}')
+            # 记住渲染产物的任务名（上传时用）
+            task_of[out] = task_of.get(vf) or basename(dirname(dirname(out))).replace('（弹幕版）', '')
             if exists(out):
                 L(f'  跳过 {basename(vf)}: 弹幕版已存在')
                 result['rendered'].append(out)
                 continue
             L(f'  渲染: {basename(vf)}')
             vi = VideoInfo(path=vf, dm_file_id=dm,
-                           streamer=StreamerInfo(name=basename(dirname(vf))),
-                           taskname=basename(dirname(vf)))
+                           streamer=StreamerInfo(name=task_of[vf]),
+                           taskname=task_of[vf])
             try:
                 status, info = renderer.render_one(video=vi, output=out)
             except Exception as e:
@@ -400,7 +406,13 @@ def recover_all(cfg=None, min_age_minutes=DEFAULT_MIN_AGE_MINUTES,
             L('配置里没有 dm_video 上传规则，跳过上传。')
         else:
             for out in result['rendered']:
-                taskname = basename(dirname(dirname(out))).replace('（弹幕版）', '')
+                # ⚠️ 必须用**解析出来的任务名**，不能用目录名推导。
+                # 2026-10-05 踩过的坑：恢复时如果 replay_dir 被改成别的目录，
+                # 用 basename(dirname(...)) 会得到错误的 {TASKNAME}，
+                # 结果文件被传到 DMR录播/<错误目录名>/ 下面。
+                taskname = task_of.get(out) or task_of.get(
+                    join(dirname(out), splitext(basename(out))[0] + '.mkv')
+                ) or basename(dirname(dirname(out))).replace('（弹幕版）', '')
                 vi = VideoInfo(path=out, streamer=StreamerInfo(name=taskname),
                                taskname=taskname, dtype='dm_video')
                 for one in dm_video_cfgs:
@@ -421,7 +433,7 @@ def recover_all(cfg=None, min_age_minutes=DEFAULT_MIN_AGE_MINUTES,
                         L(f'  上传异常 {basename(out)}: {type(e).__name__}: {e}')
                         continue
                     if status:
-                        L(f'  已上传: {basename(out)}')
+                        L(f'  已上传: {basename(out)}  →  任务目录 {taskname}')
                         result['uploaded'] += 1
                     else:
                         L(f'  上传失败 {basename(out)}: {str(message)[:200]}')
