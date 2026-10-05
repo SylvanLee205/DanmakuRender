@@ -529,21 +529,37 @@ upload_args:
 #   任务写了就以任务为准。
 #   写法参考 clean_args_task_default。
 #
-#   当前设置：弹幕版（dm_video）渲染完自动 rclone 上传到 123网盘。
+#   当前设置：弹幕版（dm_video）渲染完**立即** rclone 上传到百度网盘。
 #   ⚠️ 只在 common_event_args.auto_upload: True 时才生效。
 #   ⚠️ B站上传段（bilibili）已从 upload_args 里删除；任务如果还写了
 #      target: bilibili 会被自动跳过并打 warning，不会报错中断。
+#
+#   ★★★ realtime: true 必须有！★★★
+#   DMR 的 _check_for_upload() 里有一句：
+#       if not arg.get('realtime'): continue
+#   意思是「非实时上传」的配置项**根本不会被提交上传任务**。
+#   没有 realtime 时，只有 onLiveEnd（直播结束）才会兜底上传一次，后果：
+#     1) 弹幕版要等整场直播结束才传，直播几小时就积压几小时
+#     2) 直播中途重启/崩溃 → 内存里的 ready 状态丢失 → **永久不上传**
+#        （2026-10-02 vvu 那个 122MB 就是这么丢的）
+#   官方示例配置（configs/temp/example-直播录制.yml）也是 realtime: true。
+#   ⚠️ 改这一行之前先想清楚，改错会导致所有任务都不上传。
 # ══════════════════════════════════════════════════════════════════
 upload_args_task_default:
   # 原视频不上传（渲染完就被删掉了，上传也没意义）
   # src_video:
   #   - target: rclone
-  # 弹幕版：渲染完自动传百度网盘
+  # 弹幕版：渲染完立即传百度网盘
   #   ⚠️ remote 名是 cd2（百度网盘的 WebDAV），不是 123pan！
   #      cd2:  = 百度网盘（12TB，本机已在用）
   #      123pan: = 另一个 123云盘的 remote，别搞混
   dm_video:
     - target: rclone
+      realtime: true
+      min_length: 0
+      engine: subprocess
+      retry: 3
+      timeout: 0
       command: ['rclone', 'copy', '{PATH}', 'cd2:百度网盘/DMR录播/{TASKNAME}', '--retries', '5', '--low-level-retries', '10', '--transfers', '1']
 clean_args:
   move:

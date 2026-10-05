@@ -34,6 +34,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -138,22 +139,60 @@ def build_final_name(taskname, dt, output_name, fmt, streamer_name):
             f'{dt.hour:02d}点{dt.minute:02d}分.{fmt}')
 
 
-def find_danmaku(part_path, vid_dir):
-    """找配套的弹幕文件。
+def _time_token(name):
+    """从文件名里抽出 biliup 的 14 位时间戳（YYYYMMDDHHMMSS）。
 
-    ⚠️ glob 里 `[` `]` 是字符类语法，匹配字面量方括号必须转义成 `[[]` / `[]]`，
-    否则永远匹配不到（踩过这个坑）。
+    ⚠️ 两种命名格式都要处理：
+        .part 文件 : vvu-20261005181052-<uuid>.flv.part       ← 连续 14 位
+        弹幕文件   : [正在录制]vvu-20261005-181052-Part001.ass ← 中间有个 `-`
+    所以先把 `-` `_` 去掉，再找 14 位数字。
     """
-    cands = []
+    flat = name.replace('-', '').replace('_', '')
+    m = re.search(r'(\d{14})', flat)
+    return m.group(1) if m else None
+
+
+def _norm_digits(name):
+    """去掉所有非数字字符，用于跨命名格式比对时间戳。"""
+    return re.sub(r'\D', '', name)
+
+
+def find_danmaku(part_path, vid_dir):
+    """找配套的弹幕文件，**按时间戳匹配优先**。
+
+    为什么必须按时间戳匹配（2026-10-05 踩过的坑）：
+        同一个主播目录里会同时存在多个「[正在录制]...PartNNN.ass」，
+        分别属于不同分段。如果只凭"目录里任意一个 .ass"去配对，
+        会把 A 分段的弹幕配到 B 分段的视频上，渲染出错误的内容。
+        现在优先用 .part 文件名里的 14 位时间戳去匹配弹幕文件名
+        （两边都去掉非数字字符再比，因为命名格式不同）。
+
+    ⚠️ glob 里 `[` `]` 是字符类语法，匹配字面量方括号必须转义成 `[[]` / `[]]`。
+    """
+    stem = splitext(part_path)[0]
+    token = _time_token(basename(part_path))
+
+    def _matches(fname):
+        return bool(token) and token in _norm_digits(fname)
+
+    exact, same_token, others = [], [], []
     for ext in ('.ass', '.xml'):
-        cands += glob.glob(splitext(part_path)[0] + ext)
-        cands += glob.glob(join(vid_dir, '[[]正在录制[]]*' + ext))
-        cands += glob.glob(join(vid_dir, '*' + ext))
+        # 1) 完全同名（去掉 .part）
+        for c in glob.glob(stem + ext):
+            exact.append(c)
+        # 2) 「[正在录制]」开头的（方括号已转义）
+        for c in glob.glob(join(vid_dir, '[[]正在录制[]]*' + ext)):
+            (same_token if _matches(basename(c)) else others).append(c)
+        # 3) 兜底：目录里任何弹幕文件
+        for c in glob.glob(join(vid_dir, '*' + ext)):
+            (same_token if _matches(basename(c)) else others).append(c)
+
     seen, out = set(), []
-    for c in cands:
-        if c not in seen and isfile(c):
-            seen.add(c)
-            out.append(c)
+    for group in (exact, same_token, others):
+        for c in group:
+            if c not in seen and isfile(c):
+                seen.add(c)
+                out.append(c)
     return out
 
 

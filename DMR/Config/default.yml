@@ -306,6 +306,11 @@ upload_args:
     min_length: 0
     command: ~
 
+# 任务级默认上传配置（任务 yml 里没写 upload_args 时用这里）
+# ⚠️ 默认留空。真正的默认值在 configs/global.yml 里，因为那里可以写注释。
+#    这里存在只是为了 merge_dict 不会因为键缺失而报错。
+upload_args_task_default: ~
+
 # 清理器核心参数
 cleaner_kernel_args:
   test: True
