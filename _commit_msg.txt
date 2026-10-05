@@ -1,0 +1,27 @@
+恢复工具：修日志重复输出 + rclone PATH 兜底 + 转封装安全 + 清晰汇总
+
+1) 日志重复：_mklog() 原来既 logger.info 又 print，而 DMR 的 logger 自带
+   StreamHandler(sys.stdout)，导致终端上每条恢复日志出现两次（一次带时间戳、
+   一次裸文本），看起来像恢复了两遍。现在有 logger 时只走 logger。
+   这是用户实际反馈的问题。
+
+2) rclone 不在 PATH：单独跑 recover_part.py 时报 WinError 2，因为 DMR 的
+   Start_Render.bat 会设 PATH 但单独跑不会。新增 _ensure_tool_in_path()，
+   自动从 C:\User Program Files 等位置找 rclone 并临时加入 PATH。
+   recover_all() 和 main() 都会调用。
+
+3) 转封装安全：原来直接写目标文件，ffmpeg 先创建再失败会留下 0 字节垃圾
+   （和 libopus 事故同一模式）。改为先写 .converting 临时文件，成功后改名，
+   失败或空文件则清理并保留原 .part。
+
+4) 文件名冲突：原来用 glob 计数产生 (N) 后缀，会数到无关文件导致算出重复名字。
+   改为循环找第一个不冲突的名字。弹幕配对失败不再静默吞掉。
+
+5) 清晰汇总：CLI 结尾新增一句话结论（全部成功 / 上传 0 个 / 没有 .part），
+   并列明扫描、恢复、渲染、上传各自数量。解决用户反馈的不知道恢复几个、
+   成功没有的问题。
+
+6) 新增 dm_move 参数：支持只借用弹幕渲染、不移动文件，避免多个 .part
+   抢同一个 .ass。
+
+7) 新增 tools/audit_configs.py：全量审计 configs/ 与 configs/temp/ 的配置。

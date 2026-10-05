@@ -47,6 +47,35 @@ sys.path.insert(0, ROOT)
 
 DEFAULT_MIN_AGE_MINUTES = 2
 
+# rclone 常见安装位置（Path 里没有时按这个找）
+_RCLONE_DIRS = [
+    r'C:\User Program Files',
+    r'C:\Program Files',
+    r'C:\Program Files (x86)',
+    os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Programs'),
+    os.environ.get('USERPROFILE', ''),
+]
+
+
+def _ensure_tool_in_path(names=('rclone', 'ffmpeg', 'ffprobe')):
+    """把 rclone/ffmpeg 所在目录临时加到 PATH。
+
+    为什么需要：DMR 的 Start_Render.bat 会设置 PATH，但**单独跑这个脚本**
+    （或从计划任务/别的 shell 跑）时 PATH 里可能没有 rclone，
+    会报 `无法启动 rclone: [WinError 2]`（2026-10-05 实测）。
+    """
+    import glob as _glob
+    added = []
+    for d in _RCLONE_DIRS:
+        if not d or not os.path.isdir(d):
+            continue
+        for sub in _glob.glob(os.path.join(d, 'rclone*', 'rclone.exe')):
+            sd = os.path.dirname(sub)
+            if sd not in os.environ.get('PATH', ''):
+                os.environ['PATH'] = sd + os.pathsep + os.environ.get('PATH', '')
+                added.append(sd)
+    return added
+
 
 # ─────────────────────────── 基础工具 ───────────────────────────
 
@@ -55,13 +84,22 @@ def log(msg=''):
 
 
 def _mklog(logger):
-    """日志同时写到主程序的 logger 和 stdout。"""
+    """返回一个写日志的函数。
+
+    ⚠️ 有 logger 时**只走 logger，不再 print**。
+    原因（2026-10-05 修）：DMR 的 logger 自带 StreamHandler(sys.stdout)，
+    如果再 print 一遍，终端上每条恢复日志会**出现两次**（一次带时间戳、
+    一次裸文本），看起来像"恢复了两遍"，非常误导。
+
+    没有 logger（命令行单独跑 recover_part.py）时才 print。
+    """
     def _f(msg=''):
         if logger is not None:
             try:
                 logger.info(f'[恢复] {msg}')
+                return
             except Exception:
-                pass
+                pass          # logger 坏了就退回 print
         print(msg, flush=True)
     return _f
 
@@ -196,39 +234,75 @@ def find_danmaku(part_path, vid_dir):
     return out
 
 
-def do_recover(part_path, final_video, dm_src, out_fmt):
-    """执行恢复：视频改名（必要时转封装）+ 弹幕改名。返回 (成功, 说明)。"""
+def do_recover(part_path, final_video, dm_src, out_fmt, dm_move=True):
+    """执行恢复：视频改名（必要时转封装）+ 弹幕改名。返回 (成功, 说明)。
+
+    ⚠️ 三个要点（都是踩过坑后加的）：
+      1. **转封装先写临时文件再改名**。直接写 target_video 时，ffmpeg 会
+         先创建文件再失败，留下 0 字节垃圾 —— 这和 libopus 那次事故是同一个
+         模式，会让人以为"恢复成功"了。
+      2. **失败时清理残留**，不留半成品。
+      3. **dm_move=False 时不移动弹幕**（只借它渲染）。因为源视频目录里的
+         `[正在录制]...ass` 可能还被 DMR 或后续恢复使用，移走会引发
+         "配对失败"（2026-10-05 实测：两个 .part 抢同一个 .ass）。
+    """
     vid_dir = dirname(part_path)
     target_video = join(vid_dir, final_video)
     target_dm = join(vid_dir, splitext(final_video)[0] + '.ass')
 
     if exists(target_video):
-        cnt = len(glob.glob(splitext(target_video)[0] + '*'))
-        target_video = splitext(target_video)[0] + f'({cnt})' + splitext(target_video)[1]
-        target_dm = splitext(target_video)[0] + '.ass'
+        # ⚠️ 用 index 循环找第一个不冲突的名字，不要用 glob 计数
+        # （glob 会数到无关的 `名称(1).mkv.bak` 之类，导致算出重复名字）
+        base, ext = splitext(target_video)
+        for i in range(1, 1000):
+            cand = f'{base}({i}){ext}'
+            if not exists(cand):
+                target_video = cand
+                target_dm = f'{base}({i}).ass'
+                break
 
     src_ext = splitext(part_path)[1].lower()
     if src_ext == out_fmt.lower():
         shutil.move(part_path, target_video)
         how = '直接改名'
     else:
+        # 先写到临时名，成功了再改成正式名（避免半成品冒充成品）
+        tmp_out = target_video + '.converting'
         try:
             subprocess.check_call([
                 'ffmpeg', '-v', 'error', '-y', '-i', part_path,
-                '-c', 'copy', '-f', 'matroska', target_video,
+                '-c', 'copy', '-f', 'matroska', tmp_out,
             ], timeout=1800)
-            os.remove(part_path)
-            how = f'{src_ext.lstrip(".")} → {out_fmt} 转封装'
         except Exception as e:
-            return False, f'转封装失败: {e}'
+            if exists(tmp_out):
+                try:
+                    os.remove(tmp_out)
+                except Exception:
+                    pass
+            return False, f'转封装失败（已清理残留）: {e}'
+
+        if not exists(tmp_out) or os.path.getsize(tmp_out) == 0:
+            if exists(tmp_out):
+                try:
+                    os.remove(tmp_out)
+                except Exception:
+                    pass
+            return False, '转封装产出为空文件，已清理（原 .part 保留）'
+
+        shutil.move(tmp_out, target_video)
+        os.remove(part_path)
+        how = f'{src_ext.lstrip(".")} → {out_fmt} 转封装'
 
     got_dm = False
-    if dm_src and isfile(dm_src):
+    if dm_move and dm_src and isfile(dm_src):
         try:
             shutil.move(dm_src, target_dm)
             got_dm = True
-        except Exception:
-            pass
+        except Exception as e:
+            # 不要再静默失败：渲染依赖这个配对
+            return True, f'{how}；弹幕配对失败({type(e).__name__}: {e})，请手工核对'
+    elif dm_src and isfile(dm_src):
+        got_dm = True     # 只借用于渲染，不移动
     return True, f'{how}；弹幕{"已配对" if got_dm else "未找到"}'
 
 
@@ -254,6 +328,12 @@ def recover_all(cfg=None, min_age_minutes=DEFAULT_MIN_AGE_MINUTES,
     root = project_root or ROOT
     L = _mklog(logger)
     result = {'scanned': 0, 'recovered': [], 'rendered': [], 'uploaded': 0}
+
+    # rclone 可能不在 PATH 里（单独跑脚本/计划任务时），先补上
+    try:
+        _ensure_tool_in_path()
+    except Exception:
+        pass
 
     if cfg is None:
         import logging as _logging
@@ -517,6 +597,11 @@ def main():
     logging.basicConfig(level=logging.WARNING)
     from DMR.Config import Config
 
+    # 单独跑这个脚本时 PATH 里可能没有 rclone，先补上（否则上传会报 WinError 2）
+    added = _ensure_tool_in_path()
+    if added:
+        log(f'已把工具目录加入 PATH: {added}')
+
     cfg = Config(join(ROOT, 'configs', 'global.yml'))
 
     if opt.upload_only:
@@ -534,11 +619,33 @@ def main():
 
     log()
     log('=' * 78)
-    log(f'扫描 {res["scanned"]} / 恢复 {len(res["recovered"])} / '
-        f'渲染 {len(res["rendered"])} / 上传 {res["uploaded"]}')
+    log('  恢复结果汇总')
+    log('=' * 78)
+    n_rec = len(res['recovered'])
+    n_ren = len(res['rendered'])
+    n_up = res['uploaded']
+    # 一句话结论，终端上一眼能看懂
+    if res['scanned'] == 0:
+        verdict = '没有中断的 .part 文件，无需恢复'
+    elif n_rec == 0:
+        verdict = '发现了 .part，但都被跳过（未超过最小年龄 / 读不出来）'
+    elif n_up == n_ren and n_ren > 0:
+        verdict = f'✅ 全部成功：恢复 {n_rec} → 渲染 {n_ren} → 上传 {n_up}'
+    elif n_ren > 0 and n_up == 0:
+        verdict = f'⚠ 恢复了 {n_rec} 个、渲染了 {n_ren} 个，但**上传 0 个**（看上面失败原因）'
+    else:
+        verdict = f'⚠ 部分完成：恢复 {n_rec} → 渲染 {n_ren} → 上传 {n_up}'
+    log(f'  {verdict}')
+    log()
+    log(f'  扫描 .part : {res["scanned"]} 个')
+    log(f'  成功恢复   : {n_rec} 个')
+    log(f'  渲染完成   : {n_ren} 个')
+    log(f'  上传成功   : {n_up} 个')
     log('=' * 78)
     for f in res['recovered']:
-        log(f'  {f}')
+        log(f'  [已恢复] {f}')
+    for f in res['rendered']:
+        log(f'  [已渲染] {f}')
     if not opt.apply and res['scanned']:
         log()
         log('以上只是预览。确认无误后加 --apply 真正执行。')
