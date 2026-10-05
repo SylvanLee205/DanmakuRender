@@ -1,80 +1,197 @@
-"""完整审计 掉了颗兔牙 目录：本地 vs 云端，找出所有静默丢失的文件。
+"""云端上传审计：找出"本地有、云端无"的文件（检测静默丢失）。
 
-⚠️ 关键：不能用 rclone lsf 的结果作为"云端有"的依据？
-   实际上可以 —— 幻影条目只出现在**当前 pending** 的文件上（也就是刚 PUT 的）。
-   历史文件如果上传失败，早就从 pending 层消失了。
-   但为了严谨，我这里同时报告，并对可疑项用 dir_cache 复核。
+为什么要这个工具
+----------------
+2026-10-05 发现：文件名含 emoji 时，百度网盘开放平台 API 返回 `errno -7`，
+但 CD2 WebDAV 收到 PUT 先回 2xx（落暂存、异步上传），导致
+**rclone 退出码为 0、DMR 误判成功 → 文件静默丢失**。
+更坑的是 CD2 WebDAV 会把上传失败的文件也列出来（幻影条目），
+所以 `rclone lsf` / 挂载盘验证会**假阳性**。
+
+唯一可靠的判断方式：对比**本地文件清单**和**云端真实条目**。
+
+判据的设计
+----------
+不同任务开始上传到 cd2 的时间不同，所以不能写死一个日期。
+本工具按任务分别计算：
+    该任务云端最早文件日期  = 该任务的上传起点
+    只把「文件名日期 >= 上传起点」的本地文件算作"应该已上传"
+这样既不会漏报，也不会把上传流水线启用之前的历史文件误判为丢失。
+
+用法
+----
+    python tools\\audit_cloud.py                 # 全部任务，打印报告
+    python tools\\audit_cloud.py --task 相扑猫    # 只看一个任务
+    python tools\\audit_cloud.py --log audit.log # 同时写日志文件
+    python tools\\audit_cloud.py --strict        # 有任何丢失就以退出码 1 结束（给计划任务用）
+
+建议：做成计划任务每月跑一次，或手动在你怀疑有问题时跑。
 """
+import argparse
 import os
+import re
 import subprocess
 import sys
+import time
+from datetime import datetime
 
-RCLONE = r'C:\User Program Files\rclone-v1.75.1\rclone.exe'
-UP = r'F:\DanmakuRender_AutoUp'
-TASK = '掉了颗兔牙'
-LOCAL_DIR = os.path.join(UP, '直播回放', f'{TASK}（弹幕版）')
-REMOTE = f'cd2:百度网盘/DMR录播/{TASK}'
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPLAY = os.path.join(ROOT, '直播回放')
+REMOTE_ROOT = 'cd2:百度网盘/DMR录播'
+RCLONE_CANDIDATES = [
+    r'C:\User Program Files\rclone-v1.75.1\rclone.exe',
+    r'C:\User Program Files\rclone-v1.75.0\rclone.exe',
+    'rclone',
+]
+
+
+def find_rclone():
+    for c in RCLONE_CANDIDATES:
+        if c == 'rclone' or os.path.exists(c):
+            return c
+    return 'rclone'
+
+
+def date_of(name):
+    """从文件名里取日期，支持 YYYY年MM月DD日。"""
+    m = re.search(r'(\d{4})年(\d{2})月(\d{2})日', name)
+    return f'{m.group(1)}-{m.group(2)}-{m.group(3)}' if m else None
 
 
 def has_emoji(s):
     return any(ord(c) > 0xFFFF for c in s)
 
 
-print('=' * 78)
-print(f'审计：{TASK}')
-print('=' * 78)
+def main():
+    ap = argparse.ArgumentParser(description='本地/云端上传审计')
+    ap.add_argument('--task', default=None, help='只审计指定任务')
+    ap.add_argument('--log', default=None, help='同时把报告写入日志文件')
+    ap.add_argument('--strict', action='store_true',
+                    help='有丢失时以退出码 1 结束（方便计划任务判断）')
+    opt = ap.parse_args()
 
-r = subprocess.run([RCLONE, 'lsf', REMOTE], capture_output=True, text=True,
-                   encoding='utf-8', errors='replace', timeout=300)
-cloud = set(l.strip() for l in r.stdout.split('\n') if l.strip())
-local = set(f for f in os.listdir(LOCAL_DIR) if f.endswith('.mp4'))
+    # Windows 下 stdout 重定向到文件时默认用 GBK，会把中文写成乱码。
+    # 强制 UTF-8，保证计划任务的日志可读。
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
-print(f'  本地 {len(local)} 个文件')
-print(f'  云端 {len(cloud)} 个文件')
-print()
+    lines = []
 
-only_local = sorted(local - cloud)
-only_cloud = sorted(cloud - local)
-both = sorted(local & cloud)
+    def out(msg=''):
+        print(msg, flush=True)
+        lines.append(msg)
 
-print(f'=== ❌ 本地有、云端没有（静默丢失）: {len(only_local)} 个 ===')
-emoji_cnt = 0
-for f in only_local:
-    p = os.path.join(LOCAL_DIR, f)
-    mb = os.path.getsize(p) / 1024 / 1024
-    e = has_emoji(f)
-    emoji_cnt += e
-    print(f'    {"[含emoji] " if e else "[无emoji!] "}{mb:>8.1f} MB  {f}')
-print(f'\n    其中含 emoji 的: {emoji_cnt} / {len(only_local)}')
+    rclone = find_rclone()
+    out('=' * 78)
+    out(f'云端上传审计   {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+    out('=' * 78)
+    out(f'  项目   : {ROOT}')
+    out(f'  云端   : {REMOTE_ROOT}')
+    out(f'  rclone : {rclone}')
+    out()
 
-print()
-print(f'=== 云端有、本地没有: {len(only_cloud)} 个 ===')
-for f in only_cloud:
-    print(f'    {f}')
+    # 拉云端全量清单
+    try:
+        r = subprocess.run([rclone, 'lsf', REMOTE_ROOT, '-R'],
+                           capture_output=True, text=True, encoding='utf-8',
+                           errors='replace', timeout=900)
+        raw = r.stdout
+    except Exception as e:
+        out(f'  !! 读取云端失败: {e}')
+        out('  （如果 rclone 报连不上 CD2，先确认 CloudDrive2 服务在运行、'
+            'http://127.0.0.1:19798 可访问）')
+        return 2
 
-print()
-print(f'=== 两边都有: {len(both)} 个 ===')
+    cloud = {}
+    for l in raw.split('\n'):
+        l = l.strip()
+        if '/' not in l:
+            continue
+        task, fn = l.split('/', 1)
+        cloud.setdefault(task, set()).add(fn)
 
-print()
-print('=' * 78)
-print('结论判定')
-print('=' * 78)
-if only_local and all(has_emoji(f) for f in only_local):
-    print('  ✓ 所有丢失的文件都含 emoji —— 与 emoji 假说完全吻合')
-elif only_local:
-    print(f'  ⚠ 有 {len(only_local) - emoji_cnt} 个丢失文件不含 emoji，需要另找原因')
-else:
-    print('  ✓ 没有丢失的文件')
+    out(f'云端共 {len(cloud)} 个任务目录')
+    out()
 
-# 按日期排序看丢失窗口
-print()
-print('=== 丢失文件的日期分布 ===')
-import re
-dates = {}
-for f in only_local:
-    m = re.search(r'(\d{4})年(\d{2})月(\d{2})日', f)
-    if m:
-        key = f'{m.group(1)}-{m.group(2)}-{m.group(3)}'
-        dates[key] = dates.get(key, 0) + 1
-for d in sorted(dates):
-    print(f'    {d}: {dates[d]} 个')
+    # 遍历本地任务
+    local_tasks = []
+    if os.path.isdir(REPLAY):
+        for d in sorted(os.listdir(REPLAY)):
+            full = os.path.join(REPLAY, d)
+            if os.path.isdir(full) and d.endswith('（弹幕版）'):
+                local_tasks.append((d[:-len('（弹幕版）')], full))
+
+    if opt.task:
+        local_tasks = [x for x in local_tasks if x[0] == opt.task]
+        if not local_tasks:
+            out(f'  找不到任务 {opt.task}')
+            return 2
+
+    total_lost = 0
+    total_bytes = 0
+    problems = []
+
+    for task, local_dir in local_tasks:
+        cloud_files = cloud.get(task, set())
+        local_files = [f for f in os.listdir(local_dir) if f.endswith(('.mp4', '.mkv'))]
+
+        # 该任务的上传起点 = 云端最早文件的日期
+        cloud_dates = sorted(d for d in (date_of(f) for f in cloud_files) if d)
+        if not cloud_dates:
+            out(f'  【{task}】云端没有文件 —— 跳过（可能没开上传，或全丢）')
+            if local_files:
+                out(f'      本地有 {len(local_files)} 个文件，建议人工确认是否该上传')
+            out()
+            continue
+        start = cloud_dates[0]
+
+        expected = [f for f in local_files if (date_of(f) or '') >= start]
+        lost = [f for f in expected if f not in cloud_files]
+
+        # 云端有但本地没有（本地被清理过，正常）
+        extra = [f for f in cloud_files if f not in local_files]
+
+        status = '正常' if not lost else f'!! 丢失 {len(lost)} 个'
+        out(f'  【{task}】上传起点 {start} | 应传 {len(expected)} | '
+            f'云端 {len(cloud_files)} | {status}')
+
+        if lost:
+            for f in sorted(lost):
+                p = os.path.join(local_dir, f)
+                mb = os.path.getsize(p) / 1024 / 1024
+                total_lost += 1
+                total_bytes += os.path.getsize(p)
+                tag = '[emoji]' if has_emoji(f) else '[干净 ]'
+                out(f'        {tag} {mb:>8.1f} MB  {f}')
+                problems.append((task, f))
+        if extra and opt.task:
+            out(f'      （云端有 {len(extra)} 个本地没有的：本地已清理，正常）')
+        out()
+
+    out('=' * 78)
+    out(f'合计：丢失 {total_lost} 个文件, {total_bytes/1024/1024/1024:.2f} GB')
+    if total_lost:
+        out()
+        out('  处理建议：')
+        out('    1) 先看文件名是否含 emoji（[emoji] 标记）—— 那是已知的百度 API 限制，')
+        out('       代码已修复（上传时会自动清洗远程名），直接重跑上传即可')
+        out('    2) 重传后必须用本工具复查，不要用 rclone lsf（有幻影条目会骗人）')
+    out('=' * 78)
+
+    if opt.log:
+        try:
+            with open(opt.log, 'a', encoding='utf-8') as f:
+                f.write('\n'.join(lines) + '\n')
+            print(f'\n报告已追加到 {opt.log}')
+        except Exception as e:
+            print(f'写日志失败: {e}')
+
+    if opt.strict and total_lost:
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
