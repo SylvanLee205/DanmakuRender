@@ -44,6 +44,15 @@ RCLONE_CANDIDATES = [
     'rclone',
 ]
 
+# 复用上传层的清洗逻辑，保证"审计判断"和"实际上传"用的是同一套规则。
+# 否则含 emoji 的文件（上传时被改名）会被永远误报为丢失。
+try:
+    sys.path.insert(0, ROOT)
+    from DMR.Uploader.subprocess_uploader import safe_remote_name
+except Exception:
+    def safe_remote_name(name):
+        return name
+
 
 def find_rclone():
     for c in RCLONE_CANDIDATES:
@@ -66,6 +75,8 @@ def main():
     ap = argparse.ArgumentParser(description='本地/云端上传审计')
     ap.add_argument('--task', default=None, help='只审计指定任务')
     ap.add_argument('--log', default=None, help='同时把报告写入日志文件')
+    ap.add_argument('--verbose', action='store_true',
+                    help='显示改名上传的文件（含 emoji 的）')
     ap.add_argument('--strict', action='store_true',
                     help='有丢失时以退出码 1 结束（方便计划任务判断）')
     opt = ap.parse_args()
@@ -148,14 +159,33 @@ def main():
         start = cloud_dates[0]
 
         expected = [f for f in local_files if (date_of(f) or '') >= start]
-        lost = [f for f in expected if f not in cloud_files]
+
+        # 上传时远程文件名会被清洗（去掉 emoji），所以判断"云端有没有"时，
+        # 要拿**清洗后的名字**去比，否则含 emoji 的文件永远被误报为丢失。
+        # 2026-10-05 实例：本地 相扑猫💦-xxx.mp4 → 云端 相扑猫-xxx.mp4
+        lost = []
+        renamed = []
+        for f in expected:
+            safe = safe_remote_name(f)
+            if safe in cloud_files or f in cloud_files:
+                if safe != f:
+                    renamed.append((f, safe))
+            else:
+                lost.append(f)
 
         # 云端有但本地没有（本地被清理过，正常）
         extra = [f for f in cloud_files if f not in local_files]
 
         status = '正常' if not lost else f'!! 丢失 {len(lost)} 个'
+        if renamed and not lost:
+            status += f'（{len(renamed)} 个已改名上传 ok）'
         out(f'  【{task}】上传起点 {start} | 应传 {len(expected)} | '
             f'云端 {len(cloud_files)} | {status}')
+
+        if renamed and (opt.task or opt.verbose):
+            for f, safe in renamed:
+                out(f'        [改名ok] {f}')
+                out(f'              → 云端 {safe}')
 
         if lost:
             for f in sorted(lost):
@@ -165,6 +195,7 @@ def main():
                 total_bytes += os.path.getsize(p)
                 tag = '[emoji]' if has_emoji(f) else '[干净 ]'
                 out(f'        {tag} {mb:>8.1f} MB  {f}')
+                out(f'              期望云端名: {safe_remote_name(f)}')
                 problems.append((task, f))
         if extra and opt.task:
             out(f'      （云端有 {len(extra)} 个本地没有的：本地已清理，正常）')
