@@ -128,14 +128,25 @@ def ffprobe_ok(path, ffprobe='ffprobe'):
 
 
 def find_tasks(config_dir):
-    """返回 {任务名: 任务yml路径}"""
+    """返回 {任务名: 任务yml路径}
+
+    ⚠️ 两个坑（2026-10-05 实测）：
+      1. configs/ 和 configs/temp/ 里可能有**同名任务各一份**（temp 里是旧副本）。
+         必须让 configs/ 优先 —— 所以先扫 configs/，且 temp 里的不覆盖已有键。
+      2. 文件名可能带**尾随空格**（实测存在 `DMR-蓝羊羊不懒 .yml`），
+         会让任务名多一个空格、匹配不上目录名。统一 strip()。
+    """
     tasks = {}
     for d in (config_dir, join(config_dir, 'temp')):
         if not os.path.isdir(d):
             continue
         for f in sorted(os.listdir(d)):
-            if f.startswith('DMR-') and f.endswith('.yml'):
-                tasks.setdefault(f[4:-4], join(d, f))
+            if not (f.startswith('DMR-') and f.endswith('.yml')):
+                continue
+            name = f[4:-4].strip()          # 去掉尾随/前导空格
+            if not name:
+                continue
+            tasks.setdefault(name, join(d, f))
     return tasks
 
 

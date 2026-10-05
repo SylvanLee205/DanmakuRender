@@ -1,0 +1,11 @@
+恢复工具 find_tasks 健壮性：去尾随空格 + configs/ 优先于 temp/
+
+实测发现两个坑：
+1. configs/ 和 configs/temp/ 里有同名任务各一份（temp 里是旧副本），
+   原来按目录顺序 setdefault，取决于遍历顺序，可能拿到 temp 里的旧配置。
+   现在先扫 configs/，temp 里的不覆盖已有键。
+2. 文件名可能带尾随空格（实测存在 DMR-蓝羊羊不懒 .yml），会让任务名多一个
+   空格、匹配不上目录名。统一 strip()。
+
+验证：识别到 110 个任务（configs 31 + temp 79），configs/ 里的 31 个全部正确
+识别，蓝羊羊不懒 正确指向 configs/ 而非 temp/。
