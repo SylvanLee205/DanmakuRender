@@ -61,6 +61,24 @@ def find_rclone():
     return 'rclone'
 
 
+def find_cd2_cache():
+    """找 CD2 的 dir_cache.sqlite（云端真实条目的唯一可信来源）。
+
+    两个可能的安装位置：
+      新应用版: %LOCALAPPDATA%\\CloudDrive.WinUI\\dir_cache.sqlite
+      旧服务版: C:\\Windows\\System32\\config\\systemprofile\\Waytech\\CloudDrive2\\dir_cache.sqlite
+    优先用正在运行的那个（看 29798/19798 端口）。
+    """
+    cands = [
+        os.path.join(os.environ.get('LOCALAPPDATA', ''), 'CloudDrive.WinUI', 'dir_cache.sqlite'),
+        r'C:\Windows\System32\config\systemprofile\Waytech\CloudDrive2\dir_cache.sqlite',
+    ]
+    for c in cands:
+        if os.path.exists(c):
+            return c
+    return None
+
+
 def date_of(name):
     """从文件名里取日期，支持 YYYY年MM月DD日。"""
     m = re.search(r'(\d{4})年(\d{2})月(\d{2})日', name)
@@ -104,24 +122,55 @@ def main():
     out()
 
     # 拉云端全量清单
-    try:
-        r = subprocess.run([rclone, 'lsf', REMOTE_ROOT, '-R'],
-                           capture_output=True, text=True, encoding='utf-8',
-                           errors='replace', timeout=900)
-        raw = r.stdout
-    except Exception as e:
-        out(f'  !! 读取云端失败: {e}')
-        out('  （如果 rclone 报连不上 CD2，先确认 CloudDrive2 服务在运行、'
-            'http://127.0.0.1:19798 可访问）')
-        return 2
-
+    #
+    # ⚠️⚠️ 关键：**必须查 CD2 自己的缓存（dir_cache.sqlite），不能用 rclone lsf**。
+    # CD2 的 WebDAV 会把「已接收但还没上传成功」的文件也列出来（幻影条目），
+    # 所以 rclone lsf 会假阳性 —— 这个坑在 2026-10-05 和 10-06 各踩了一次，
+    # 每次都得出"上传成功"的错误结论。
+    # CD2 的 files 表才是百度 API 真实返回的内容。
     cloud = {}
-    for l in raw.split('\n'):
-        l = l.strip()
-        if '/' not in l:
-            continue
-        task, fn = l.split('/', 1)
-        cloud.setdefault(task, set()).add(fn)
+    cd2_cache = find_cd2_cache()
+    if cd2_cache:
+        try:
+            import shutil as _sh
+            import sqlite3 as _sq
+            dst = os.path.join(os.environ.get('TEMP', '.'), 'dmr_audit_cache')
+            os.makedirs(dst, exist_ok=True)
+            for suffix in ('', '-wal', '-shm'):
+                src = cd2_cache + suffix
+                if os.path.exists(src):
+                    try:
+                        _sh.copy2(src, os.path.join(dst, 'dir_cache.sqlite' + suffix))
+                    except Exception:
+                        pass
+            con = _sq.connect(f'file:{os.path.join(dst, "dir_cache.sqlite")}?mode=ro', uri=True)
+            cur = con.cursor()
+            # cached_item.path 形如 /百度网盘/DMR录播/<任务名>
+            cur.execute("SELECT id, path FROM cached_item WHERE path LIKE ?", ('%/DMR录播/%',))
+            for did, path in cur.fetchall():
+                task = path.rstrip('/').split('/')[-1]
+                cur.execute('SELECT name FROM files WHERE parent_id=?', (did,))
+                cloud.setdefault(task, set()).update(r[0] for r in cur.fetchall())
+            con.close()
+            out(f'云端清单来源: CD2 缓存（可信）  {os.path.dirname(cd2_cache)}')
+        except Exception as e:
+            out(f'  !! 读 CD2 缓存失败: {e}，回退到 rclone（可能有幻影）')
+            cd2_cache = None
+    if not cd2_cache:
+        try:
+            r = subprocess.run([rclone, 'lsf', REMOTE_ROOT, '-R'],
+                               capture_output=True, text=True, encoding='utf-8',
+                               errors='replace', timeout=900)
+            for l in r.stdout.split('\n'):
+                l = l.strip()
+                if '/' not in l:
+                    continue
+                task, fn = l.split('/', 1)
+                cloud.setdefault(task, set()).add(fn)
+            out('  ⚠ 云端清单来源: rclone lsf（**可能含幻影条目，结果仅供参考**）')
+        except Exception as e:
+            out(f'  !! 读取云端失败: {e}')
+            return 2
 
     out(f'云端共 {len(cloud)} 个任务目录')
     out()
