@@ -61,19 +61,45 @@ def find_rclone():
     return 'rclone'
 
 
+def _port_of_rclone_cd2():
+    """从 rclone.conf 里读 [cd2] 的 url 端口，判断当前用的是哪个 CD2 实例。"""
+    try:
+        cfg = os.path.join(os.environ.get('APPDATA', ''), 'rclone', 'rclone.conf')
+        txt = open(cfg, encoding='utf-8', errors='replace').read()
+        m = re.search(r'^\[cd2\](.*?)(?=^\[|\Z)', txt, re.M | re.S)
+        if m:
+            m2 = re.search(r'localhost:(\d+)', m.group(1))
+            if m2:
+                return int(m2.group(1))
+    except Exception:
+        pass
+    return None
+
+
 def find_cd2_cache():
     """找 CD2 的 dir_cache.sqlite（云端真实条目的唯一可信来源）。
 
-    两个可能的安装位置：
-      新应用版: %LOCALAPPDATA%\\CloudDrive.WinUI\\dir_cache.sqlite
-      旧服务版: C:\\Windows\\System32\\config\\systemprofile\\Waytech\\CloudDrive2\\dir_cache.sqlite
-    优先用正在运行的那个（看 29798/19798 端口）。
+    ⚠️ 关键：必须用**当前真正在跑的那个实例**的缓存。
+
+    两个产品**进程名相同**（都叫 clouddrive.exe）但端口和配置目录不同：
+      核心服务版 (19798): C:\\Windows\\System32\\config\\systemprofile\\Waytech\\CloudDrive2\\
+      应用版     (29798): %LOCALAPPDATA%\\CloudDrive.WinUI\\
+
+    2026-10-06 踩过这个坑：从应用版切到服务版后，审计仍读应用版的旧缓存，
+    得出的"丢失 0 个"是**过期数据**，不可信。
+    所以这里以 rclone.conf 的端口为准来选缓存目录。
     """
-    cands = [
-        os.path.join(os.environ.get('LOCALAPPDATA', ''), 'CloudDrive.WinUI', 'dir_cache.sqlite'),
-        r'C:\Windows\System32\config\systemprofile\Waytech\CloudDrive2\dir_cache.sqlite',
-    ]
-    for c in cands:
+    svc = r'C:\Windows\System32\config\systemprofile\Waytech\CloudDrive2\dir_cache.sqlite'
+    app = os.path.join(os.environ.get('LOCALAPPDATA', ''),
+                       'CloudDrive.WinUI', 'dir_cache.sqlite')
+    port = _port_of_rclone_cd2()
+    if port == 19798:
+        preferred = [svc, app]
+    elif port == 29798:
+        preferred = [app, svc]
+    else:
+        preferred = [svc, app]      # 判断不出时优先服务版
+    for c in preferred:
         if os.path.exists(c):
             return c
     return None
@@ -134,25 +160,51 @@ def main():
         try:
             import shutil as _sh
             import sqlite3 as _sq
-            dst = os.path.join(os.environ.get('TEMP', '.'), 'dmr_audit_cache')
-            os.makedirs(dst, exist_ok=True)
-            for suffix in ('', '-wal', '-shm'):
-                src = cd2_cache + suffix
-                if os.path.exists(src):
-                    try:
-                        _sh.copy2(src, os.path.join(dst, 'dir_cache.sqlite' + suffix))
-                    except Exception:
-                        pass
-            con = _sq.connect(f'file:{os.path.join(dst, "dir_cache.sqlite")}?mode=ro', uri=True)
-            cur = con.cursor()
-            # cached_item.path 形如 /百度网盘/DMR录播/<任务名>
-            cur.execute("SELECT id, path FROM cached_item WHERE path LIKE ?", ('%/DMR录播/%',))
-            for did, path in cur.fetchall():
-                task = path.rstrip('/').split('/')[-1]
-                cur.execute('SELECT name FROM files WHERE parent_id=?', (did,))
-                cloud.setdefault(task, set()).update(r[0] for r in cur.fetchall())
-            con.close()
+
+            def _read_cache():
+                dst = os.path.join(os.environ.get('TEMP', '.'), 'dmr_audit_cache')
+                os.makedirs(dst, exist_ok=True)
+                for suffix in ('', '-wal', '-shm'):
+                    src = cd2_cache + suffix
+                    if os.path.exists(src):
+                        try:
+                            _sh.copy2(src, os.path.join(dst, 'dir_cache.sqlite' + suffix))
+                        except Exception:
+                            pass
+                out2 = {}
+                con = _sq.connect(f'file:{os.path.join(dst, "dir_cache.sqlite")}?mode=ro',
+                                  uri=True)
+                cur = con.cursor()
+                cur.execute("SELECT id, path FROM cached_item WHERE path LIKE ?",
+                            ('%/DMR录播/%',))
+                for did, path in cur.fetchall():
+                    task = path.rstrip('/').split('/')[-1]
+                    cur.execute('SELECT name FROM files WHERE parent_id=?', (did,))
+                    out2.setdefault(task, set()).update(r[0] for r in cur.fetchall())
+                con.close()
+                return out2
+
+            cloud = _read_cache()
+            # ⚠️ 关键：缓存可能是**冷的**（CD2 刚启动/刚切换实例时，
+            # 目录缓存还没建立）。这时只读缓存会得出"云端什么都没有"的
+            # 错误结论。所以先跑一次 rclone -R 枚举云端，让 CD2 建立缓存，
+            # 再读一次。
+            if not cloud or len(cloud) < 3:
+                out(f'  （CD2 缓存是冷的：{len(cloud)} 个目录，'
+                    f'先枚举云端预热缓存…）')
+                subprocess.run([rclone, 'lsf', REMOTE_ROOT, '-R'],
+                               capture_output=True, text=True, encoding='utf-8',
+                               errors='replace', timeout=1800)
+                time.sleep(3)
+                cloud2 = _read_cache()
+                if len(cloud2) > len(cloud):
+                    cloud = cloud2
+                    out(f'  （预热后：{len(cloud)} 个目录）')
+
             out(f'云端清单来源: CD2 缓存（可信）  {os.path.dirname(cd2_cache)}')
+            if not cloud:
+                out('  ⚠ 缓存仍然为空 —— 检查 CD2 是否在运行、'
+                    'rclone 是否指向正确的端口（服务版 19798 / 应用版 29798）')
         except Exception as e:
             out(f'  !! 读 CD2 缓存失败: {e}，回退到 rclone（可能有幻影）')
             cd2_cache = None
@@ -160,7 +212,7 @@ def main():
         try:
             r = subprocess.run([rclone, 'lsf', REMOTE_ROOT, '-R'],
                                capture_output=True, text=True, encoding='utf-8',
-                               errors='replace', timeout=900)
+                               errors='replace', timeout=1800)
             for l in r.stdout.split('\n'):
                 l = l.strip()
                 if '/' not in l:
