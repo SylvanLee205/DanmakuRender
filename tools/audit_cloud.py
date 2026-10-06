@@ -28,6 +28,7 @@
 建议：做成计划任务每月跑一次，或手动在你怀疑有问题时跑。
 """
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -113,6 +114,86 @@ def date_of(name):
 
 def has_emoji(s):
     return any(ord(c) > 0xFFFF for c in s)
+
+
+def load_skip_rule(root):
+    """读 DMR 的"跳过上传"规则（render_args.dmrender.skip_upload_rule）。
+
+    规则语义（与 DMR/Task/liveevents.py 保持一致）：
+      横屏 且（码率 ≥ skip_bitrate_kbps 或 帧率 ≥ skip_fps）
+      命中数 ≥ skip_min_matches  →  不上传
+    """
+    try:
+        import yaml
+        p = os.path.join(root, 'configs', 'global.yml')
+        g = yaml.safe_load(open(p, encoding='utf-8')) or {}
+        r = ((g.get('render_args') or {}).get('dmrender') or {}).get('skip_upload_rule')
+        if isinstance(r, dict) and r.get('enabled'):
+            return r
+    except Exception:
+        pass
+    return None
+
+
+def probe_video(path):
+    """用 ffprobe 取 宽/高/帧率/码率。失败返回 None。"""
+    try:
+        r = subprocess.run(
+            ['ffprobe', '-v', 'error', '-select_streams', 'v:0',
+             '-show_entries', 'stream=width,height,r_frame_rate',
+             '-show_entries', 'format=duration,bit_rate',
+             '-of', 'json', path],
+            capture_output=True, text=True, encoding='utf-8',
+            errors='replace', timeout=120)
+        if r.returncode != 0:
+            return None
+        j = json.loads(r.stdout or '{}')
+        st = (j.get('streams') or [{}])[0]
+        fmt = j.get('format') or {}
+        w = st.get('width') or 0
+        h = st.get('height') or 0
+        fr = st.get('r_frame_rate') or '0/1'
+        num, den = (fr.split('/') + ['1'])[:2]
+        fps = (float(num) / float(den)) if float(den or 0) else 0.0
+        # 优先用 format 的 bit_rate，没有就用 文件大小/时长 估算
+        br = fmt.get('bit_rate')
+        if br:
+            kbps = float(br) / 1000.0
+        else:
+            dur = float(fmt.get('duration') or 0)
+            kbps = (os.path.getsize(path) * 8 / dur / 1000.0) if dur else 0.0
+        return {'w': w, 'h': h, 'fps': fps, 'kbps': kbps}
+    except Exception:
+        return None
+
+
+def should_skip_upload(path, rule):
+    """按规则判断这个文件是否"本该跳过上传"。
+
+    返回 True = 跳过（不该在云端，审计不应报丢失）。
+    ffprobe 失败时**返回 False**（保守：宁可报丢失也不漏报）。
+    """
+    if not rule or not rule.get('enabled'):
+        return False
+    info = probe_video(path)
+    if not info:
+        return False
+    w, h = info['w'], info['h']
+    if not w or not h:
+        return False
+    landscape = w > h
+    if rule.get('skip_require_landscape') and not landscape:
+        return False
+    hits = 0
+    if rule.get('skip_landscape') and landscape:
+        hits += 1
+    br = rule.get('skip_bitrate_kbps') or 0
+    if br and info['kbps'] >= br:
+        hits += 1
+    fp = rule.get('skip_fps') or 0
+    if fp and info['fps'] >= fp:
+        hits += 1
+    return hits >= (rule.get('skip_min_matches') or 1)
 
 
 def main():
@@ -245,6 +326,19 @@ def main():
     total_bytes = 0
     problems = []
 
+    # 读"跳过上传"规则（这些文件本就不该在云端，审计要排除它们）
+    skip_rule = load_skip_rule(ROOT)
+    if skip_rule:
+        out(f'跳过上传规则（已启用，审计会排除命中的文件）:')
+        out(f'    横屏={skip_rule.get("skip_landscape")} '
+            f'必须横屏={skip_rule.get("skip_require_landscape")} '
+            f'码率≥{skip_rule.get("skip_bitrate_kbps")}kbps '
+            f'帧率≥{skip_rule.get("skip_fps")}fps '
+            f'命中≥{skip_rule.get("skip_min_matches")}项')
+        out()
+    else:
+        out('跳过上传规则: 未启用')
+
     for task, local_dir in local_tasks:
         cloud_files = cloud.get(task, set())
         local_files = [f for f in os.listdir(local_dir) if f.endswith(('.mp4', '.mkv'))]
@@ -260,6 +354,24 @@ def main():
         start = cloud_dates[0]
 
         expected = [f for f in local_files if (date_of(f) or '') >= start]
+
+        # ⚠️ 关键：排除**按规则本就该跳过上传**的文件。
+        #
+        # DMR 有个"跳过上传"规则（render_args.dmrender.skip_upload_rule）：
+        #   横屏 且（码率 ≥ N kbps 或 帧率 ≥ N fps）→ 不上传
+        # 这类文件**本来就不在云端**，但审计如果不认这个规则，
+        # 就会把它们报成"丢失"，造成假告警。
+        # 2026-10-06 实例：苏苏没烦恼 有 4 个 1920x1080/45fps/~3200kbps 的文件，
+        # 全都命中跳过条件，却被审计报成"丢失 4 个"，我因此白忙一场。
+        skipped = []
+        if skip_rule and skip_rule.get('enabled'):
+            kept = []
+            for f in expected:
+                if should_skip_upload(os.path.join(local_dir, f), skip_rule):
+                    skipped.append(f)
+                else:
+                    kept.append(f)
+            expected = kept
 
         # 上传时远程文件名会被清洗（去掉 emoji），所以判断"云端有没有"时，
         # 要拿**清洗后的名字**去比，否则含 emoji 的文件永远被误报为丢失。
@@ -280,8 +392,14 @@ def main():
         status = '正常' if not lost else f'!! 丢失 {len(lost)} 个'
         if renamed and not lost:
             status += f'（{len(renamed)} 个已改名上传 ok）'
+        if skipped:
+            status += f'（{len(skipped)} 个按规则跳过上传，不计入缺失）'
         out(f'  【{task}】上传起点 {start} | 应传 {len(expected)} | '
             f'云端 {len(cloud_files)} | {status}')
+
+        if skipped:
+            for f in skipped:
+                out(f'        [跳过] {f}  ← 命中跳过上传规则，本就不该上传')
 
         if renamed and (opt.task or opt.verbose):
             for f, safe in renamed:
