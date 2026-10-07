@@ -109,7 +109,8 @@ class Cleaner():
                 files = [src]
                 if _has_dm:
                     files.append(dm_file)
-                cleaned_files.extend(files)
+                # 记录 (原文件路径, 是否含弹幕文件)，供完成事件拼文案用
+                cleaned_files.append((src, _has_dm))
                 
                 for f in files:
                     if method == 'move':
@@ -129,7 +130,13 @@ class Cleaner():
                         if wait and p.returncode != 0:
                             raise RuntimeError(f'命令执行失败: {cmds}')
                 
-            self._pipeSend('end', f'清理完成: {", ".join(basename(f) for f in cleaned_files)}', target=task['source'], request_id=task['request_id'])
+            # 完成文案与"正在清理原文件"保持一致：只留文件名，
+            # 有弹幕的标注（含弹幕文件）
+            _parts = []
+            for _p, _dm in cleaned_files:
+                # 弹幕文件不在 cleaned_files 里单独列（它归入原文件）
+                _parts.append(basename(_p) + ('（含弹幕文件）' if _dm else ''))
+            self._pipeSend('end', f'清理完成: {", ".join(_parts)}', target=task['source'], request_id=task['request_id'])
         except Exception as e:
             self.logger.exception(e)
             self._pipeSend('error', f'清理错误 {e}.', target=task['source'], request_id=task['request_id'], dtype='Exception', data=e)

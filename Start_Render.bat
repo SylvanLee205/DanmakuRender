@@ -1,34 +1,45 @@
 @echo off
-:: 设置 UTF-8 编码以支持中文
-chcp 65001 >nul
-title DanmakuRender_守护进程
+rem ============================================================
+rem  DanmakuRender launcher (ASCII only - DO NOT add non-ASCII!)
+rem
+rem  Why ASCII only:
+rem    cmd.exe parses this file using the SYSTEM code page (936/GBK)
+rem    BEFORE the chcp below takes effect. Any UTF-8 Chinese here
+rem    would be misread as GBK and break command parsing, causing
+rem    an endless flood of "not recognized as an internal command".
+rem    Chinese notification text lives in notify_content.txt instead.
+rem ============================================================
 
-:: --- 配置区 ---
-:: 建议只保留 SendKey 部分，方便后期管理
+rem chcp 65001 so curl sends the UTF-8 notify text correctly
+chcp 65001 >nul
+
+title DanmakuRender_Guard
+
+rem --- config ---
 set "API_URL=https://17530.push.ft07.com/send/sctp17530thl3urer2dsbnw3rnqyxzep.send"
-set "TITLE=DMR服务器状态报告"
-set "CONTENT=渲染服务器已成功复活。Intel A380 驱动正常，AV1 录制环境准备就绪。"
-:: -------------
+set "NOTIFY_FILE=F:\DanmakuRender_AutoUp\notify_content.txt"
+rem ---------------
 
 :loop
 cls
-echo [%date% %time%] 正在启动服务...
+echo [%date% %time%] Starting DanmakuRender ...
 
-:: 使用 POST 方式发送通知，--data-urlencode 确保中文传输不乱码
-curl -s -m 15 --data-urlencode "title=%TITLE%" --data-urlencode "desp=%CONTENT%" "%API_URL%" >nul
+rem Send restart notification.
+rem   -m 15      : timeout, otherwise a stuck network blocks startup forever
+rem   --data-urlencode "desp@file" : read body from UTF-8 file
+curl -s -m 15 --data-urlencode "title=DanmakuRender" --data-urlencode "desp@%NOTIFY_FILE%" "%API_URL%" >nul 2>&1
 
-:: 切换到项目盘符和目录
+rem switch to project drive and dir
 F:
 cd "F:\DanmakuRender_AutoUp"
 
-:: 调用虚拟环境运行程序
+rem run in venv (quiet: only key progress + warnings)
 ".\.venv\Scripts\python.exe" main.py --quiet
 
 echo.
-echo [%date% %time%] 警告：程序已退出（可能是崩溃或手动关闭）。
-echo 10秒后将自动尝试重新循环启动...
+echo [%date% %time%] WARNING: program exited (crash or manual close).
+echo Restarting in 10 seconds ...
 echo.
 
-:: 等待10秒
 timeout /t 10
 goto loop
