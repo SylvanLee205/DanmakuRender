@@ -1,39 +1,36 @@
 @echo off
 rem ============================================================
-rem  DanmakuRender launcher (ASCII only - DO NOT add non-ASCII!)
+rem  DanmakuRender launcher / crash-restart guard
+rem  ASCII ONLY - DO NOT add non-ASCII characters!
 rem
 rem  Why ASCII only:
-rem    cmd.exe parses this file using the SYSTEM code page (936/GBK)
-rem    BEFORE the chcp below takes effect. Any UTF-8 Chinese here
-rem    would be misread as GBK and break command parsing, causing
-rem    an endless flood of "not recognized as an internal command".
-rem    Chinese notification text lives in notify_content.txt instead.
+rem    cmd.exe parses this file with the SYSTEM code page (936/GBK)
+rem    BEFORE the chcp below takes effect. UTF-8 Chinese here would
+rem    be misread as GBK, break command parsing, and flood the
+rem    console with "not recognized as an internal command".
+rem    (This actually happened on 2026-10-07.)
+rem
+rem  Notification is NOT sent from here. DMR itself sends it after a
+rem  successful start (see tools/gen_restart_notify.py), so the
+rem  message reflects the real state instead of "about to start".
 rem ============================================================
 
-rem chcp 65001 so curl sends the UTF-8 notify text correctly
+rem chcp 65001 keeps console output readable
 chcp 65001 >nul
 
 title DanmakuRender_Guard
-
-rem --- config ---
-set "API_URL=https://17530.push.ft07.com/send/sctp17530thl3urer2dsbnw3rnqyxzep.send"
-set "NOTIFY_FILE=F:\DanmakuRender_AutoUp\notify_content.txt"
-rem ---------------
 
 :loop
 cls
 echo [%date% %time%] Starting DanmakuRender ...
 
-rem Send restart notification.
-rem   -m 15      : timeout, otherwise a stuck network blocks startup forever
-rem   --data-urlencode "desp@file" : read body from UTF-8 file
-curl -s -m 15 --data-urlencode "title=DanmakuRender" --data-urlencode "desp@%NOTIFY_FILE%" "%API_URL%" >nul 2>&1
-
 rem switch to project drive and dir
 F:
 cd "F:\DanmakuRender_AutoUp"
 
-rem run in venv (quiet: only key progress + warnings)
+rem run in venv
+rem   --quiet : keep all INFO (so each streamer's load/live state is visible)
+rem             but filter out the engine message-dict noise
 ".\.venv\Scripts\python.exe" main.py --quiet
 
 echo.

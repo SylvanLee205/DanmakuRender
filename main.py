@@ -246,10 +246,33 @@ if __name__ == '__main__':
     # 用户扫一眼终端就能看出哪个主播加载成功、哪个开播了 —— 这比汇总更有用。
     # 也不打印"控制台会空白"的提示，避免和真实日志混淆。
 
+    # ── 启动成功 → 发重启通知 ──
+    # 放在 dmr.start() **之后**，所以通知里的状态是真实的：
+    #   - 任务数来自实际加载的配置
+    #   - CD2 状态实时查
+    #   - 正在录制的任务从日志里读
+    # 在后台线程里发，避免网络慢时拖住启动。
+    n_tasks = len(getattr(config, 'replay_config', {}) or {})
+
+    def _send_startup_notify():
+        try:
+            sys.path.insert(0, os.path.join(os.path.dirname(
+                os.path.abspath(__file__)), 'tools'))
+            from gen_restart_notify import notify as _notify
+            ok, title, _ = _notify(task_count=n_tasks, log_file=log_file, quiet=True)
+            logger.debug(f'[通知] {"已发送" if ok else "发送失败"}: {title}')
+        except Exception as e:
+            logger.debug(f'[通知] 发送异常: {type(e).__name__}: {e}')
+
+    try:
+        threading.Thread(target=_send_startup_notify, daemon=True,
+                         name='DMR-startup-notify').start()
+    except Exception:
+        pass
+
     # ── 心跳：定期往日志写一行，证明程序还在跑 ──
     # 用 INFO 级别（控制台也会显示，但 30 分钟才一行，不构成噪音）。
     # 主要作用是让"日志文件还在增长"成为"程序活着"的证据。
-    n_tasks = len(getattr(config, 'replay_config', {}) or {})
 
     def _heartbeat():
         while True:
