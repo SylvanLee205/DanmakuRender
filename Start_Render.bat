@@ -15,7 +15,7 @@ cls
 echo [%date% %time%] 正在启动服务...
 
 :: 使用 POST 方式发送通知，--data-urlencode 确保中文传输不乱码
-curl -s --data-urlencode "title=%TITLE%" --data-urlencode "desp=%CONTENT%" "%API_URL%" >nul
+curl -s -m 15 --data-urlencode "title=%TITLE%" --data-urlencode "desp=%CONTENT%" "%API_URL%" >nul
 
 :: 切换到项目盘符和目录
 F:
