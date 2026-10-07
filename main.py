@@ -184,7 +184,41 @@ if __name__ == '__main__':
 
     dmr = DanmakuRender(config, logger=logger, debug=args.debug)
     dmr.start()
-    
+
+    # ── 启动汇总：让用户一眼看出"程序起来了、监听了多少主播" ──
+    # 背景：控制台降噪后，如果所有主播都没开播，控制台会长时间空白，
+    # 用户分不清"正常空闲"和"程序卡死"。所以这里明确报一次任务数，
+    # 并说明"空白是正常的"。
+    try:
+        n_tasks = len(getattr(config, 'replay_config', {}) or {})
+        print('=' * 68)
+        print(f'  已加载并开始监听 {n_tasks} 个主播')
+        print('  每个主播的状态检查结果会写进日志文件；')
+        print('  控制台只在【开播 / 渲染 / 上传 / 清理】时输出。')
+        print('  → 所以控制台长时间空白 = 所有主播都没开播，属于正常。')
+        print(f'  → 想看每个主播的状态，查日志: {log_file}')
+        print('=' * 68)
+        print()
+    except Exception:
+        pass
+
+    # ── 心跳：定期往日志写一行，证明程序还在跑 ──
+    # 用 INFO 级别（控制台不显示），只在日志文件里留痕。
+    # 这样"日志文件还在增长"就能作为"程序活着"的证据。
+    def _heartbeat():
+        while True:
+            time.sleep(1800)          # 每 30 分钟
+            try:
+                logger.info(f'[心跳] 程序运行中，监听 {n_tasks} 个主播。')
+            except Exception:
+                pass
+
+    try:
+        threading.Thread(target=_heartbeat, daemon=True,
+                         name='DMR-heartbeat').start()
+    except Exception:
+        pass
+
     try:
         while 1:
             time.sleep(60)
