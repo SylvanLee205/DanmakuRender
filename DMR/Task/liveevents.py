@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 from .baseevents import BaseEvents
 from ..utils import *
 
@@ -18,6 +19,8 @@ class LiveEvents(BaseEvents):
         self.state_dict = {}
         self.ended_dict = {}
         self.logger = logging.getLogger(__name__)
+        # 开播/下播通知的防抖记录：{ '{kind}:{任务名}': 上次发送时间戳 }
+        self._notify_last = {}
 
     @property
     def event_dict(self):
@@ -41,6 +44,51 @@ class LiveEvents(BaseEvents):
         # 走 PROGRESS 级别：直播开始/下播、清理完成等关键事件会在
         # --quiet 模式下显示；而 engine 的消息字典等 DEBUG 内容不显示。
         self.logger.log(PROGRESS, f'{self.name}: {message.msg}')
+        # 开播时发手机通知（这是"谁在播"最有价值的时刻 —— 启动通知发在
+        # 录制之前，那时必然还没开播，所以"正在录制"只在开播时才准）
+        if '直播开始' in str(message.msg):
+            self._notify_live('start')
+
+    # ── 开播 / 下播 手机通知 ──────────────────────────────────────
+    def _notify_live(self, kind):
+        """发开播/下播通知。在后台线程里做，不阻塞事件处理。
+
+        kind: 'start' 开播 / 'end' 下播
+
+        防抖：同一种事件对这个任务 60 秒内只发一次，避免
+        （网络抖动导致的）重复开播事件把手机刷爆。
+        """
+        try:
+            now = time.time()
+            key = f'{kind}:{self.name}'
+            last = self._notify_last.get(key, 0)
+            if now - last < 60:
+                return
+            self._notify_last[key] = now
+
+            import threading as _th
+
+            def _do():
+                try:
+                    from DMR.notify import send
+                    ts = time.strftime('%Y-%m-%d %H:%M:%S')
+                    if kind == 'start':
+                        title = f'🔴 开播：{self.name}'
+                        send(title, [f'主播：{self.name}',
+                                     f'时间：{ts}',
+                                     '',
+                                     '开始录制...'])
+                    else:
+                        title = f'⚪ 下播：{self.name}'
+                        send(title, [f'主播：{self.name}',
+                                     f'时间：{ts}'])
+                except Exception:
+                    pass
+
+            _th.Thread(target=_do, daemon=True).start()
+        except Exception:
+            pass
+
 
     def onTaskError(self, message:PipeMessage):
         """渲染 / 上传失败时的状态收敛（render/error、uploader/error）。
@@ -197,7 +245,10 @@ class LiveEvents(BaseEvents):
         return ret_msgs
     
     def onLiveEnd(self, message:PipeMessage):
+        # 状态仍然是 INFO（控制台不显示）—— "下播"在控制台不值得占一行，
+        # 但手机通知会发（见下方 _notify_live）。
         self.logger.info(f'{self.name}: {message.msg}.')
+        self._notify_live('end')
         group_id = message.data
         if group_id is None:
             return

@@ -248,18 +248,19 @@ if __name__ == '__main__':
 
     # ── 启动成功 → 发重启通知 ──
     # 放在 dmr.start() **之后**，所以通知里的状态是真实的：
-    #   - 任务数来自实际加载的配置
+    #   - 主播名单来自实际加载的配置（不是写死的数字）
     #   - CD2 状态实时查
-    #   - 正在录制的任务从日志里读
     # 在后台线程里发，避免网络慢时拖住启动。
-    n_tasks = len(getattr(config, 'replay_config', {}) or {})
+    _task_names = list((getattr(config, 'replay_config', {}) or {}).keys())
+    n_tasks = len(_task_names)
 
     def _send_startup_notify():
         try:
             sys.path.insert(0, os.path.join(os.path.dirname(
                 os.path.abspath(__file__)), 'tools'))
             from gen_restart_notify import notify as _notify
-            ok, title, _ = _notify(task_count=n_tasks, log_file=log_file, quiet=True)
+            ok, title, _ = _notify(task_names=_task_names, task_count=n_tasks,
+                                   quiet=True)
             logger.debug(f'[通知] {"已发送" if ok else "发送失败"}: {title}')
         except Exception as e:
             logger.debug(f'[通知] 发送异常: {type(e).__name__}: {e}')
