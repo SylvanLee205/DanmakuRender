@@ -85,7 +85,8 @@ class Cleaner():
                     self.logger.warning(f'文件 {file.path} 不存在，跳过清理.')
                     continue
 
-                self.logger.info(f'正在清理文件: {method} {file.path}.')
+                # 只显示文件名，不显示 "./直播回放/xxx/" 这种长路径
+                self.logger.info(f'正在清理原文件: {basename(file.path)}')
                 src = abspath(file.path)
                 if dst and not dst.startswith('*'):
                     dst = abspath(replace_keywords(dst, file, replace_invalid=True))
@@ -96,7 +97,7 @@ class Cleaner():
                 files = [src]
                 dm_file = file.get('dm_file_id')
                 if dm_file and exists(dm_file):
-                    self.logger.info(f'正在清理弹幕文件: {method} {dm_file}.')
+                    self.logger.info(f'正在清理弹幕文件: {basename(dm_file)}')
                     files.append(dm_file)
                 cleaned_files.extend(files)
                 
@@ -118,7 +119,7 @@ class Cleaner():
                         if wait and p.returncode != 0:
                             raise RuntimeError(f'命令执行失败: {cmds}')
                 
-            self._pipeSend('end', f'清理完成：{method} {cleaned_files} -> {dst}.', target=task['source'], request_id=task['request_id'])
+            self._pipeSend('end', f'清理完成: {", ".join(basename(f) for f in cleaned_files)}', target=task['source'], request_id=task['request_id'])
         except Exception as e:
             self.logger.exception(e)
             self._pipeSend('error', f'清理错误 {e}.', target=task['source'], request_id=task['request_id'], dtype='Exception', data=e)

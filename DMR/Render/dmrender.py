@@ -91,7 +91,9 @@ class DmRender(BaseRender):
             fps = self.gop_default_fps
             self.logger.warning(f'获取视频帧率失败，GOP 按默认帧率 {fps} 计算。')
         gop = max(1, int(round(fps * self.gop_multiplier)))
-        self.logger.info(f'GOP: 源帧率 {fps:g} x {self.gop_multiplier:g} = {gop} 帧关键帧间隔。')
+        # GOP 是纯技术细节，控制台不需要看。用 debug 级别：
+        # 控制台（INFO 及以上）不显示，日志文件（DEBUG）仍保留可追溯。
+        self.logger.debug(f'GOP: 源帧率 {fps:g} x {self.gop_multiplier:g} = {gop} 帧关键帧间隔。')
         return ['-g', str(gop)]
 
     def render_helper(self, video: str, danmaku: str, output: str, to_stdout: bool = False, logfile=None):

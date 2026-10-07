@@ -4,7 +4,7 @@ import queue
 import time
 import json
 from concurrent.futures import ThreadPoolExecutor
-from os.path import join, exists
+from os.path import join, exists, basename
 from datetime import datetime
 from typing import Tuple
 
@@ -174,7 +174,12 @@ class Uploader():
             else:
                 self._pipeSend(
                     event='end',
-                    msg=f"视频 {[f.path for f in task['files']]} 上传完成: {desc}",
+                    # ⚠️ 这条 msg 会被 DMR/Task/liveevents.py 的 onUploadEnd **原样打印**。
+                    # 所以这里必须简短 —— 曾经写成
+                    #   f"视频 {[f.path for f in task['files']]} 上传完成: {desc}"
+                    # 而 desc 里又是 "File <完整路径> upload success."，
+                    # 结果控制台出现一条消息里路径打两遍、还带 upload success 的乱象。
+                    msg=f"{', '.join(basename(f.path) for f in task['files'])} 上传完成",
                     target=task['source'],
                     request_id=task['request_id'],
                     dtype='dict',
@@ -223,7 +228,8 @@ class Uploader():
                     if stream_queue:
                         self.logger.info(f"正在同步上传 {files[0].title} 至 {upload_args.get('account')}")
                     else:
-                        self.logger.info(f"正在上传 {[f.path for f in files]} 至 {upload_args.get('account')}")
+                        self.logger.info(
+                            f"正在上传: {', '.join(basename(f.path) for f in files)}")
                     # logging.debug(task)
                     res = target_uploader.upload(files=files, stream_queue=stream_queue, **upload_args)
                     
@@ -244,10 +250,12 @@ class Uploader():
                 if status or self.stoped:
                     break
                 elif retry < 0:
-                    self.logger.warning(f'上传 {[f.path for f in files]} 时出现错误，跳过上传.')
+                    self.logger.warning(
+                        f'上传 {", ".join(basename(f.path) for f in files)} 失败，跳过上传.')
                     break
                 else:
-                    self.logger.warning(f'上传 {[f.path for f in files]} 时出现错误，即将重传.')
+                    self.logger.warning(
+                        f'上传 {", ".join(basename(f.path) for f in files)} 出错，即将重传.')
                     self.logger.debug(info)
                     time.sleep(60)
             

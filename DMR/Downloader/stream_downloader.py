@@ -6,7 +6,7 @@ import time
 import re
 
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
-from os.path import join,exists,splitext
+from os.path import join,exists,splitext,basename
 from datetime import datetime
 from DMR.Downloader.Danmaku import DanmakuDownloader
 from DMR.LiveAPI import *
@@ -139,7 +139,7 @@ class StreamDownloadTask():
             self.segment_start_time = datetime.now()
             return
 
-        self._pipeSend(event='livesegment', msg=f'视频分段 {newfile} 录制完成.', target=f'replay/{self.taskname}', dtype='VideoInfo', data=video_info)
+        self._pipeSend(event='livesegment', msg=f'视频分段 {basename(str(newfile))} 录制完成.', target=f'replay/{self.taskname}', dtype='VideoInfo', data=video_info)
         new_room_info = retry_safe(self.liveapi.GetRoomInfo)
         if new_room_info:
             self.room_info = new_room_info

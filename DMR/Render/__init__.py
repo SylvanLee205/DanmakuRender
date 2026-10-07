@@ -5,7 +5,7 @@ import os
 import threading
 import queue
 from concurrent.futures import ThreadPoolExecutor
-from os.path import join, exists
+from os.path import join, exists, basename
 from typing import Tuple
 
 from DMR.utils import VideoInfo, DateTimeEncoder, DateTimeDecoder, uuid, PipeMessage
@@ -144,7 +144,9 @@ class Render():
             else:
                 self._pipeSend(
                     event='end',
-                    msg=f"视频{task['output']}渲染完成",
+                    # 只用文件名，不带 "./直播回放/xxx/" 这种长路径 ——
+                    # 插件那边会原样打印，带路径会又长又乱
+                    msg=f"{basename(task['output'])} 渲染完成",
                     target=task['source'],
                     request_id=task['request_id'],
                     dtype='dict',
@@ -171,7 +173,7 @@ class Render():
                 from .ffmpeg import RawFFmpegRender as TargetRender
             
             target_render = TargetRender(**render_args)
-            self.logger.info(f'正在渲染: {video.path}')
+            self.logger.info(f'正在渲染: {basename(video.path)}')
             os.makedirs(os.path.dirname(output), exist_ok=True)
 
             self._render_class[task['uuid']] = target_render
