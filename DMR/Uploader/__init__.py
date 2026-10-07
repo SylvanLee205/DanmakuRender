@@ -228,7 +228,8 @@ class Uploader():
                     if stream_queue:
                         self.logger.info(f"正在同步上传 {files[0].title} 至 {upload_args.get('account')}")
                     else:
-                        self.logger.info(
+                        # PROGRESS 级别：--quiet 模式下也能看到"正在上传"
+                        self.logger.log(25,  # PROGRESS
                             f"正在上传: {', '.join(basename(f.path) for f in files)}")
                     # logging.debug(task)
                     res = target_uploader.upload(files=files, stream_queue=stream_queue, **upload_args)

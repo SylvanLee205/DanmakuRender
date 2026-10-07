@@ -9,6 +9,18 @@ import os
 import sys
 import logging
 import logging.handlers
+# ── 自定义日志级别：PROGRESS ──────────────────────────────────────
+# 目的：控制台既要"安静"（不显示 GOP/engine 字典/每个任务的状态流转），
+#       又要能看出程序在干活（不然像卡死）。
+# 数值取 25，落在 INFO(20) 和 WARNING(30) 之间：
+#     --quiet          -> PROGRESS（只显示关键进度 + 警告错误）
+#     --quiet=info     -> INFO（详细，原行为）
+#     --quiet=error    -> ERROR（只留错误）
+#     --quiet=debug    -> DEBUG（很吵）
+PROGRESS = 25
+logging.addLevelName(PROGRESS, 'PROGRESS')
+
+
 import yaml
 from glob import glob
 from os.path import exists, splitext
@@ -87,26 +99,32 @@ if __name__ == '__main__':
                         help='只恢复最后修改早于 N 分钟的 .part（默认 2）')
     parser.add_argument('--quiet', nargs='?', const='quiet', default=None,
                         metavar='LEVEL',
-                        help='降低控制台输出。不带值 = 只显示 WARNING 及以上；'
-                             '也可指定 info/warning/error/debug。'
+                        help='降低控制台输出。不带值 = PROGRESS（只显示关键进度 '
+                             '如直播开始/渲染完成/上传完成 + 警告错误）；'
+                             '也可指定 info（详细，原行为）/warning/error/debug。'
                              '注意：只影响控制台，日志文件始终保留全部 DEBUG。')
     args = parser.parse_args()
 
     # 控制台日志级别
-    #   默认 INFO（原行为）
-    #   --quiet             -> WARNING（只留警告和错误）
-    #   --quiet=error       -> ERROR（只留错误）
+    #   默认（不带 --quiet） -> INFO（原行为，详细）
+    #   --quiet             -> PROGRESS（关键进度 + 警告错误）★推荐
+    #   --quiet=info        -> INFO（和默认一样）
+    #   --quiet=warning     -> WARNING（只有警告错误，最安静）
+    #   --quiet=error       -> ERROR（只有错误）
     #   --quiet=debug       -> DEBUG（排查用，很吵）
     # 日志文件不受影响，永远是 DEBUG，所以放心降噪。
     _lvl_name = (args.quiet or 'info').lower()
+    if _lvl_name in ('quiet', ''):
+        _lvl_name = 'progress'
     _console_level = {
         'debug': logging.DEBUG,
         'info': logging.INFO,
+        'progress': PROGRESS,
         'warning': logging.WARNING,
         'warn': logging.WARNING,
         'error': logging.ERROR,
         'critical': logging.CRITICAL,
-    }.get(_lvl_name, logging.WARNING)
+    }.get(_lvl_name, PROGRESS)
 
     if args.version:
         print(f'DanmakuRender-5 {VERSION}.')
@@ -142,7 +160,7 @@ if __name__ == '__main__':
     # 用 print 直接输出（不经 logger），确保任何级别下都显示。
     try:
         _lvl_txt = {logging.DEBUG: 'DEBUG(很吵)', logging.INFO: 'INFO',
-                    logging.WARNING: 'WARNING(安静)',
+                    logging.WARNING: 'WARNING(只有警告)', PROGRESS: 'PROGRESS(关键进度)',
                     logging.ERROR: 'ERROR(只留错误)',
                     logging.CRITICAL: 'CRITICAL'}.get(_console_level, '?')
         print()
@@ -150,9 +168,9 @@ if __name__ == '__main__':
         print(f'  DanmakuRender-5 {VERSION}   已启动')
         print(f'  控制台输出级别: {_lvl_txt}')
         print(f'  完整日志(DEBUG): {log_file}')
-        if _console_level >= logging.WARNING:
-            print('  （控制台已静默，只显示警告/错误；'
-                  '想恢复详细输出去掉 --quiet）')
+        if _console_level >= PROGRESS:
+            print('  （控制台只显示关键进度和警告/错误；'
+                  '想看详细输出用 --quiet=info）')
         print('=' * 68)
         print()
     except Exception:

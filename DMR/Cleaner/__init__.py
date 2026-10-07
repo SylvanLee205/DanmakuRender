@@ -85,19 +85,29 @@ class Cleaner():
                     self.logger.warning(f'文件 {file.path} 不存在，跳过清理.')
                     continue
 
-                # 只显示文件名，不显示 "./直播回放/xxx/" 这种长路径
-                self.logger.info(f'正在清理原文件: {basename(file.path)}')
+                # ── 清理消息：原文件和弹幕文件合并成一行 ──
+                # 弹幕文件（.ass）本身属于原视频的附属产物，分开报会很乱。
+                # 目标格式：
+                #     正在清理原文件: xxx.mkv（含弹幕）
+                #     已在清理循环里决定（见下方 dm_file 判断）
+                _base = basename(file.path)
+                dm_file = file.get('dm_file_id')
+                _has_dm = bool(dm_file and exists(dm_file))
+
+                if _has_dm:
+                    self.logger.log(25, f'正在清理原文件: {_base}（含弹幕文件）')  # PROGRESS
+                else:
+                    self.logger.log(25, f'正在清理原文件: {_base}')  # PROGRESS
+
                 src = abspath(file.path)
                 if dst and not dst.startswith('*'):
                     dst = abspath(replace_keywords(dst, file, replace_invalid=True))
                     if not exists(dst):
                         self.logger.info(f'目标文件夹 {dst} 不存在，即将自动创建.')
                         os.makedirs(dst)
-                
+
                 files = [src]
-                dm_file = file.get('dm_file_id')
-                if dm_file and exists(dm_file):
-                    self.logger.info(f'正在清理弹幕文件: {basename(dm_file)}')
+                if _has_dm:
                     files.append(dm_file)
                 cleaned_files.extend(files)
                 

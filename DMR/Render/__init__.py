@@ -173,7 +173,7 @@ class Render():
                 from .ffmpeg import RawFFmpegRender as TargetRender
             
             target_render = TargetRender(**render_args)
-            self.logger.info(f'正在渲染: {basename(video.path)}')
+            self.logger.log(25, f'正在渲染: {basename(video.path)}')   # PROGRESS
             os.makedirs(os.path.dirname(output), exist_ok=True)
 
             self._render_class[task['uuid']] = target_render

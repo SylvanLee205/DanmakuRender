@@ -3,6 +3,15 @@ import os
 from .baseevents import BaseEvents
 from ..utils import *
 
+# 自定义日志级别 PROGRESS(25)：介于 INFO(20) 和 WARNING(30) 之间。
+# main.py 里用 --quiet（不带值）时把控制台设成这一级，效果：
+#     显示：直播开始 / 渲染完成 / 上传完成 这类关键进度 + 警告错误
+#     隐藏：engine 的消息字典、每个任务的"直播已结束"、各种调试细节
+# 注意 addLevelName 是幂等的，重复调用无害。
+PROGRESS = 25
+logging.addLevelName(PROGRESS, 'PROGRESS')
+
+
 class LiveEvents(BaseEvents):
     def __init__(self, name, config):
         super().__init__(name, config)
@@ -29,7 +38,9 @@ class LiveEvents(BaseEvents):
         }
     
     def defaultEvent(self, message:PipeMessage):
-        self.logger.info(f'{self.name}: {message.msg}')
+        # 走 PROGRESS 级别：直播开始/下播、清理完成等关键事件会在
+        # --quiet 模式下显示；而 engine 的消息字典等 DEBUG 内容不显示。
+        self.logger.log(PROGRESS, f'{self.name}: {message.msg}')
 
     def onTaskError(self, message:PipeMessage):
         """渲染 / 上传失败时的状态收敛（render/error、uploader/error）。
@@ -96,7 +107,8 @@ class LiveEvents(BaseEvents):
         )
     
     def onLiveSegment(self, message:PipeMessage):
-        self.logger.info(f'{self.name}: {message.msg}')
+        # 分段录制完成属于关键进度（用户在 --quiet 下也想看到）
+        self.logger.log(PROGRESS, f'{self.name}: {message.msg}')
         video:VideoInfo = message.data
         video_state = {
             # 'video_id': uuid(8),
@@ -370,7 +382,8 @@ class LiveEvents(BaseEvents):
         return ret_msgs
     
     def onRenderEnd(self, message:PipeMessage):
-        self.logger.info(f'{self.name}: {message.msg}.')
+        # 渲染完成 = 关键进度
+        self.logger.log(PROGRESS, f'{self.name}: {message.msg}.')
         request_id = message.request_id
         video:VideoInfo = message.data.get('output')
         video_states = self.state_dict[video.group_id]
@@ -617,7 +630,8 @@ class LiveEvents(BaseEvents):
                 self.state_dict.pop(group_id)
 
     def onUploadEnd(self, message:PipeMessage):
-        self.logger.info(f'{self.name}: {message.msg}.')
+        # 上传完成 = 关键进度
+        self.logger.log(PROGRESS, f'{self.name}: {message.msg}.')
         request_id = message.request_id
         # 将状态信息中request_id对应的等待移除
         for group_id, video_states in self.state_dict.items():
