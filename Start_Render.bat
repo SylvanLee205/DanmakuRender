@@ -19,10 +19,10 @@ curl -s --data-urlencode "title=%TITLE%" --data-urlencode "desp=%CONTENT%" "%API
 
 :: 切换到项目盘符和目录
 F:
-cd "F:\DanmakuRender-2026.01.10"
+cd "F:\DanmakuRender_AutoUp"
 
 :: 调用虚拟环境运行程序
-".\.venv\Scripts\python.exe" main.py
+".\.venv\Scripts\python.exe" main.py --quiet
 
 echo.
 echo [%date% %time%] 警告：程序已退出（可能是崩溃或手动关闭）。

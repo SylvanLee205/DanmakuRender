@@ -85,7 +85,28 @@ if __name__ == '__main__':
                         help='恢复过程同步执行（等恢复渲染完再开始录制），默认后台跑')
     parser.add_argument('--recover_min_age', type=int, default=2,
                         help='只恢复最后修改早于 N 分钟的 .part（默认 2）')
+    parser.add_argument('--quiet', nargs='?', const='quiet', default=None,
+                        metavar='LEVEL',
+                        help='降低控制台输出。不带值 = 只显示 WARNING 及以上；'
+                             '也可指定 info/warning/error/debug。'
+                             '注意：只影响控制台，日志文件始终保留全部 DEBUG。')
     args = parser.parse_args()
+
+    # 控制台日志级别
+    #   默认 INFO（原行为）
+    #   --quiet             -> WARNING（只留警告和错误）
+    #   --quiet=error       -> ERROR（只留错误）
+    #   --quiet=debug       -> DEBUG（排查用，很吵）
+    # 日志文件不受影响，永远是 DEBUG，所以放心降噪。
+    _lvl_name = (args.quiet or 'info').lower()
+    _console_level = {
+        'debug': logging.DEBUG,
+        'info': logging.INFO,
+        'warning': logging.WARNING,
+        'warn': logging.WARNING,
+        'error': logging.ERROR,
+        'critical': logging.CRITICAL,
+    }.get(_lvl_name, logging.WARNING)
 
     if args.version:
         print(f'DanmakuRender-5 {VERSION}.')
@@ -100,7 +121,7 @@ if __name__ == '__main__':
     logger = logging.getLogger('DMR')
     logger.setLevel(logging.DEBUG)
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO) 
+    console_handler.setLevel(_console_level)
     console_handler.setFormatter(logging.Formatter("[%(asctime)s][%(levelname)s]: %(message)s"))
     
     os.makedirs('logs', exist_ok=True)
@@ -116,6 +137,26 @@ if __name__ == '__main__':
     logger.addHandler(file_handler)
 
     logger.debug(f'VERSION: {VERSION}')
+
+    # 启动横幅：因为静默模式下控制台没有 INFO 日志，很容易看不出程序还在跑。
+    # 用 print 直接输出（不经 logger），确保任何级别下都显示。
+    try:
+        _lvl_txt = {logging.DEBUG: 'DEBUG(很吵)', logging.INFO: 'INFO',
+                    logging.WARNING: 'WARNING(安静)',
+                    logging.ERROR: 'ERROR(只留错误)',
+                    logging.CRITICAL: 'CRITICAL'}.get(_console_level, '?')
+        print()
+        print('=' * 68)
+        print(f'  DanmakuRender-5 {VERSION}   已启动')
+        print(f'  控制台输出级别: {_lvl_txt}')
+        print(f'  完整日志(DEBUG): {log_file}')
+        if _console_level >= logging.WARNING:
+            print('  （控制台已静默，只显示警告/错误；'
+                  '想恢复详细输出去掉 --quiet）')
+        print('=' * 68)
+        print()
+    except Exception:
+        pass
 
     # 启动时自动恢复中断录制（在起引擎之前，日志已就绪）
     _startup_recover(config, logger,
