@@ -21,6 +21,16 @@ class LiveEvents(BaseEvents):
         self.logger = logging.getLogger(__name__)
         # 开播/下播通知的防抖记录：{ '{kind}:{任务名}': 上次发送时间戳 }
         self._notify_last = {}
+        # ⚠️ 这个任务是**本次启动后第一次**报告"直播已结束"吗？
+        #
+        # 为什么需要：DMR 启动时，32 个任务各自去查一次主播状态。
+        # 没开播的任务会发一次 liveend 事件 -> onLiveEnd -> 下播通知。
+        # 结果：刚启动就收到 32 条"下播"通知，纯噪音
+        # （用户反馈："启动之后会报很多下播提醒"）。
+        #
+        # 所以第一次"已结束"只当成**初始状态确认**，不发通知；
+        # 之后收到的"已结束"才是真正的下播（说明之前真的开播过）。
+        self._seen_end = False
 
     @property
     def event_dict(self):
@@ -55,11 +65,23 @@ class LiveEvents(BaseEvents):
 
         kind: 'start' 开播 / 'end' 下播
 
-        防抖：同一种事件对这个任务 60 秒内只发一次，避免
-        （网络抖动导致的）重复开播事件把手机刷爆。
+        两条防噪规则：
+          1. 60 秒防抖：同一任务的同一种事件 60 秒内只发一次
+             （网络抖动可能导致重复的 livestart 事件）
+          2. **启动后第一次"直播已结束"不发通知** —— 那只是初始状态确认，
+             不是真的下播。否则每次重启都会收到 32 条"下播"噪音。
         """
         try:
             now = time.time()
+
+            if kind == 'end':
+                if not self._seen_end:
+                    # 首次"已结束" = 启动时的状态确认，只记录不通知
+                    self._seen_end = True
+                    return
+            else:
+                self._seen_end = True   # 开播过，之后的下播才算真下播
+
             key = f'{kind}:{self.name}'
             last = self._notify_last.get(key, 0)
             if now - last < 60:
@@ -73,7 +95,7 @@ class LiveEvents(BaseEvents):
                     from DMR.notify import send
                     ts = time.strftime('%Y-%m-%d %H:%M:%S')
                     if kind == 'start':
-                        title = f'🔴 开播：{self.name}'
+                        title = f'🟢 开播：{self.name}'
                         send(title, [f'主播：{self.name}',
                                      f'时间：{ts}',
                                      '',
