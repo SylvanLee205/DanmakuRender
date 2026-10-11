@@ -59,28 +59,30 @@ class LiveEvents(BaseEvents):
         if '直播开始' in str(message.msg):
             self._notify_live('start')
 
-    # ── 开播 / 下播 手机通知 ──────────────────────────────────────
+    # ── 开播手机通知 ──────────────────────────────────────────────
     def _notify_live(self, kind):
-        """发开播/下播通知。在后台线程里做，不阻塞事件处理。
+        """发开播通知。在后台线程里做，不阻塞事件处理。
 
         kind: 'start' 开播 / 'end' 下播
 
-        两条防噪规则：
-          1. 60 秒防抖：同一任务的同一种事件 60 秒内只发一次
-             （网络抖动可能导致重复的 livestart 事件）
-          2. **启动后第一次"直播已结束"不发通知** —— 那只是初始状态确认，
-             不是真的下播。否则每次重启都会收到 32 条"下播"噪音。
+        ⚠️ 2026-10-08 用户要求：**只通知开播，不通知下播。**
+            理由："我更关注开播而不关注下播"。
+            所以 'end' 直接返回，只保留状态标记（供 _seen_end 判断用）。
+
+        防噪规则：
+            60 秒防抖 —— 同一任务的开播事件 60 秒内只发一次
+            （网络抖动可能导致重复的 livestart 事件）
         """
         try:
             now = time.time()
 
             if kind == 'end':
-                if not self._seen_end:
-                    # 首次"已结束" = 启动时的状态确认，只记录不通知
-                    self._seen_end = True
-                    return
-            else:
-                self._seen_end = True   # 开播过，之后的下播才算真下播
+                # 下播不通知。但仍记录状态，便于将来想恢复时使用。
+                self._seen_end = True
+                return
+
+            if kind == 'start':
+                self._seen_end = True   # 开播过
 
             key = f'{kind}:{self.name}'
             last = self._notify_last.get(key, 0)
@@ -94,16 +96,12 @@ class LiveEvents(BaseEvents):
                 try:
                     from DMR.notify import send
                     ts = time.strftime('%Y-%m-%d %H:%M:%S')
-                    if kind == 'start':
-                        title = f'🟢 开播：{self.name}'
-                        send(title, [f'主播：{self.name}',
-                                     f'时间：{ts}',
-                                     '',
-                                     '开始录制...'])
-                    else:
-                        title = f'⚪ 下播：{self.name}'
-                        send(title, [f'主播：{self.name}',
-                                     f'时间：{ts}'])
+                    # 只发开播通知（下播在函数开头就 return 了）
+                    send(f'🟢 开播：{self.name}',
+                         [f'主播：{self.name}',
+                          f'时间：{ts}',
+                          '',
+                          '开始录制...'])
                 except Exception:
                     pass
 
