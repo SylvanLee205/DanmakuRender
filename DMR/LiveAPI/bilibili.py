@@ -118,60 +118,48 @@ class bilibili(BaseAPI):
                        **kwargs) -> str:
         avail_urls = self.get_stream_urls(**kwargs)
 
-        # 有可能返回的流存在多种质量，因为H.265和H.264压缩策略不同
-        max_quality = max(avail_urls, key=lambda x: x['quality'])['quality']
-        avail_urls = [max_res_urls for max_res_urls in avail_urls if max_res_urls['quality'] == max_quality]
+        # 先按用户要求筛掉不符合的流，再做画质选择。
+        #
+        # 注意：这里必须先过滤再选画质，否则"指定流类型"会被静默忽略 ——
+        # 原实现虽然算了 selected_urls，但随后又被一行"只按 quality 选"的赋值
+        # 整个覆盖，导致无论传什么 stream_type（hls/fmp4/ts-avc…）都会走到
+        # ``random.choice(avail_urls)``，随机返回任意一路（通常是 flv）。
+        if stream_type == 'hls':
+            # 兼容旧配置：hls 在所有 B站实现里都对应 fmp4 分片
+            stream_type = 'fmp4'
 
-        # 找出URL里面不带bluray字样的原画流
-        best_urls = [best_urls for best_urls in avail_urls if not re.search(r'live_\d+_[a-zA-Z_]{0,10}\d+_[a-zA-Z1-2]{1,10}', best_urls['stream_url'])]
-        if best_urls:
-            avail_urls = best_urls
+        filtered_urls = avail_urls
+        if stream_cdn:
+            filtered_urls = [
+                url_info for url_info in filtered_urls
+                if url_info['stream_cdn'] == stream_cdn
+                or re.search(stream_cdn, url_info['stream_cdn']) is not None
+            ]
+        if stream_type:
+            filtered_urls = [
+                url_info for url_info in filtered_urls
+                if stream_type in url_info['stream_type']
+            ]
 
-        # 如果没有指定cdn和流类型，使用自动选择
-        if not stream_cdn and not stream_type:
-            # 无原画流，使用hls用于强制原画
-            if not best_urls:
-                stream_cdn = '.*gotcha.*'
-                stream_type = 'fmp4'
-            # HEVC,av1原画使用hls，H264使用flv
-            else:
-                if any('avc' not in url_info['stream_type'] for url_info in best_urls):
-                    stream_type = 'fmp4'
-                else:
-                    stream_type = 'flv'
-        # 使用指定的cdn和流类型
+        if not filtered_urls:
+            logger.warning(f'Bilibili{self.rid}没有满足 {stream_cdn},{stream_type},{quality} 的流，将使用默认选项.')
+            return random.choice(avail_urls)['stream_url']
+
+        if quality:
+            selected_quality = quality
         else:
-            stream_type = 'fmp4' if stream_type == 'hls' else 'flv'
+            selected_quality = max(filtered_urls, key=lambda x: x['quality'])['quality']
 
-        selected_urls = []
-        for url_info in avail_urls:
-            if stream_cdn \
-                and url_info['stream_cdn'] != stream_cdn \
-                and re.search(stream_cdn, url_info['stream_cdn']) is None:
-                continue
-            if stream_type and stream_type not in url_info['stream_type']:
-                continue
-            uri = url_info['stream_url']
-            selected_urls.append(uri)
-
-        # 尝试使用不带后缀的原始流地址
-        for uri in selected_urls:
-            try:
-                stream_name = match1(uri, r'(live_\d+_[a-zA-Z_]{0,10}\d+_[a-zA-Z1-2]{1,10})')
-                ori_stream_name = '_'.join(stream_name.split('_')[:-1])
-                uri = uri.replace(stream_name, ori_stream_name)
-                resp = self.sess.get(uri, headers=self.header, timeout=5, stream=True)
-                if resp.status_code == 200:
-                    logger.debug(f'find origin stream {stream_name}->{ori_stream_name}')
-                    return uri
-            except Exception:
-                pass
+        selected_urls = [url_info['stream_url'] for url_info in filtered_urls
+                         if url_info['quality'] == selected_quality]
 
         if not selected_urls:
-            logger.warning(f'Bilibili{self.rid}没有满足 {stream_cdn},{stream_type} 的流，将使用默认选项.')
-            return random.choice(avail_urls)['stream_url']
-        else:
-            return random.choice(selected_urls)
+            # 指定画质在筛选结果里不存在时，退回该筛选条件下的最高画质
+            best_quality = max(filtered_urls, key=lambda x: x['quality'])['quality']
+            selected_urls = [url_info['stream_url'] for url_info in filtered_urls
+                             if url_info['quality'] == best_quality]
+
+        return random.choice(selected_urls)
 
     def get_info(self) -> tuple:
         try:

@@ -1,10 +1,11 @@
 # 获取斗鱼直播间的真实流媒体地址，默认最高画质
 # 使用 https://github.com/wbt5/real-url/issues/185 中两位大佬@wjxgzz @4bbu6j5885o3gpv6ss8找到的的CDN，在此感谢！
 # 2025.11.30 更新，https://github.com/biliup/biliup/blob/master/biliup/plugins/douyu.py
+# 2026.3.4 更新，https://github.com/biliup/biliup/pull/1603/changes
 import hashlib
 import json
 import logging
-import random
+import os
 import re
 import threading
 import time
@@ -24,9 +25,44 @@ DOUYU_DEFAULT_DID = "10000000000000000000000000001501"
 DOUYU_WEB_DOMAIN = "www.douyu.com"
 DOUYU_PLAY_DOMAIN = "playweb.douyucdn.cn"
 DOUYU_MOBILE_DOMAIN = "m.douyu.com"
+# 斗鱼观看 cookies 默认路径：浏览器导出的 cookies 文本或 cookies 字典 json
+DOUYU_DEFAULT_COOKIES = ".login_info/douyu_watch_cookies.json"
 
 
 logger = logging.getLogger(__name__)
+
+
+def load_cookies(cookies) -> dict:
+    '''
+    把 cookies 归一化为 {name: value} 字典
+
+    :param cookies: 支持 dict / cookies 字符串('a=b; c=d') / json 字符串 / json 文件路径 / cookies 文本文件路径
+                    json 兼容 {'k': 'v'} 与 {'cookie_info': {'cookies': [{'name': .., 'value': ..}]}} 两种结构
+    '''
+    if isinstance(cookies, dict):
+        return {str(k): str(v) for k, v in cookies.items()}
+    if not isinstance(cookies, str):
+        raise TypeError(f'不支持的 cookies 类型: {type(cookies).__name__}')
+
+    text = cookies.strip()
+    if text and not text.startswith('{') and os.path.exists(text):
+        with open(text, 'r', encoding='utf-8') as f:
+            text = f.read().strip()
+    if not text:
+        return {}
+
+    if text.startswith('{'):
+        data = json.loads(text)
+        if isinstance(data, dict) and isinstance(data.get('cookie_info'), dict):
+            data = {c['name']: c['value'] for c in data['cookie_info']['cookies']}
+        if not isinstance(data, dict):
+            raise ValueError('cookies json 必须是字典')
+        return {str(k): str(v) for k, v in data.items()}
+
+    # cookies 文本：容忍末尾多余的分号以及不规范的空白
+    if '=' not in text: # 既不是 json 也没有 k=v，说明是写错的路径而不是 cookies
+        return {}
+    return {k: v for k, _, v in (item.strip().partition('=') for item in text.split(';')) if k}
 
 class douyu(BaseAPI):
     fake_headers = BaseAPI._default_header.copy()
@@ -45,11 +81,15 @@ class douyu(BaseAPI):
             raise Exception('房间号错误')
         
         self.__js_runable = True
+        self.__use_login_cookies = False
+        # 登录 cookies 只用于取流请求，不写入 session：
+        # 开播判断/房间信息走 betard，必须保持匿名（不带登录态）。
+        self.__watch_cookies = {}
         self.plugin_msg = f"douyu-{self.rid}"
         self.__req_query = {
             'cdn': 'hw-h5',
             'rate': '0',
-            'ver': '219032101',
+            'ver': 'Douyu_new',
             'iar': '0', # ispreload? 1: 忽略 rate 参数，使用默认画质
             'ive': '0', # rate? 0~19 时、19~24 时请求数 >=3 为真
             'rid': self.rid,
@@ -119,7 +159,8 @@ class douyu(BaseAPI):
             ctx = jsengine.jsengine()
             js_enc = (
                 self.sess.get(f'https://www.douyu.com/swf_api/homeH5Enc?rids={rid}',
-                                 headers=self.fake_headers)
+                                 headers=self.fake_headers,
+                                 cookies=self.__watch_cookies or None) # 取流流程的一部分
             ).json()['data'][f'room{rid}']
             js_enc = js_enc.replace('return eval', 'return [strc, vdwdae325w_64we];')
 
@@ -148,14 +189,38 @@ class douyu(BaseAPI):
         '''
         :param room_id: 房间号
         :param req_query: 请求参数
-        :param req_method: 请求方法。可选 GET, POST（默认）
         :param did: douyuid
         :return: PlayInfo
         '''
         if type(room_id) == int:
             room_id = str(room_id)
-        if not self.__js_runable:
-            s = DouyuUtils.sign(type="stream", ts=int(time.time()), did=did, rid=room_id)
+        # 带登录 cookies 时必须走 JSEngine 签名 + www 的 getH5Play：
+        # 免 JSEngine 的 V1 接口不认登录态（带 cookies 请求会直接失败），
+        # 只有这条路才会按登录用户下发原画（rate=0）与长期有效的流地址（expire=0）。
+        if self.__js_runable and (self.__use_login_cookies or room_id in DouyuUtils.VipRoom):
+            s = self.aget_sign(room_id)
+            logger.debug(f"{self.plugin_msg}: JSEngine 签名参数 {s}")
+            req_query = {
+                **req_query,
+                **s
+            }
+            if self.__use_login_cookies:
+                url = f"https://{DOUYU_WEB_DOMAIN}/lapi/live/getH5Play/{room_id}"
+                rsp = self.sess.post(
+                    url,
+                    headers=self.fake_headers,
+                    data=req_query,
+                    cookies=self.__watch_cookies, # 登录态只在取流请求上携带
+                )
+            else:
+                url = f"https://{DOUYU_PLAY_DOMAIN}/lapi/live/getH5Play/{room_id}"
+                rsp = self.sess.get(
+                    url,
+                    headers=self.fake_headers,
+                    params=req_query
+                )
+        else:
+            s = DouyuUtils.sign(sign_type="stream", ts=int(time.time()), did=did, rid=room_id)
             logger.debug(f"{self.plugin_msg}: 免 JSEngine 签名参数 {s}")
             auth_param = {
                 "enc_data": s['key']['enc_data'],
@@ -163,36 +228,32 @@ class douyu(BaseAPI):
                 "did": did,
                 "auth": s['auth'],
             }
-            req_query.update(auth_param)
-        else:
-            s = self.aget_sign(room_id)
-            # logger.debug(f"{self.plugin_msg}: JSEngine 签名参数 {s}")
-            req_query.update(s)
-        api_ver = "V1" if not self.__js_runable else ""
-        is_vip = room_id in DouyuUtils.VipRoom # 非 vip room 需要 e 参数，部分直播间可直接请求 hs-h5
-        req_method = "GET" if is_vip and not api_ver else "POST"
-        path = f"/lapi/live/getH5Play{api_ver}/{room_id}"
-        url = f"https://{DOUYU_PLAY_DOMAIN}{path}" if req_method == "GET" else f"https://{DOUYU_WEB_DOMAIN}{path}"
-        # url += f"?{urlencode(req_query, doseq=True, encoding='utf-8')}"
-        if req_method == "GET":
-            rsp = self.sess.get(
-                url,
-                headers=self.fake_headers,
-                params=req_query
-            )
-        else:
+            req_query = {
+                **req_query,
+                **auth_param,
+            }
+            url = f"https://{DOUYU_WEB_DOMAIN}/lapi/live/getH5PlayV1/{room_id}"
             rsp = self.sess.post(
                 url,
                 headers={**self.fake_headers, 'user-agent': DouyuUtils.UserAgent},
-                params=req_query, # V1 接口需使用查询参数
+                # params=req_query, # V1 接口需使用查询参数
                 data=req_query # 原接口需使用请求体
             )
+
         rsp.raise_for_status()
         play_data = json.loads(rsp.text)
         if not play_data:
             raise RuntimeError(f"获取播放信息失败 {rsp}")
-        if play_data['error'] != 0 or not play_data.get('data', {}):
-            raise ValueError(f"获取播放信息错误 {str(play_data)}")
+        if (err := play_data['error']) != 0 or not play_data.get('data', {}):
+            msg = play_data.get('msg', '')
+            if err == -5:
+                raise RuntimeError("[closeRoom] 主播未开播")
+            elif err == -9:
+                raise RuntimeError("[room_bus_checksevertime] 用户本机时间戳不对")
+            elif err == 126:
+                raise RuntimeError(f"版权原因，该地域不允许播放：{msg}")
+            else:
+                raise RuntimeError(f"获取播放信息错误: code={err}, msg={msg}, raw_obj={play_data}")
         return play_data['data']
 
 
@@ -304,7 +365,50 @@ class douyu(BaseAPI):
         hs_cname_url = f"http://{hs_cname_host}/live/{stream_id}.flv?{query}"
         return (hs_host, hs_cname_url)
 
-    def get_stream_urls(self, stream_cdn=None, **kwargs) -> str:
+    def get_stream_urls(self, 
+                        stream_cdn=None,
+                        douyu_watch_cookies=DOUYU_DEFAULT_COOKIES,
+                        **kwargs) -> str:
+
+        # 取流时带上登录 cookies：斗鱼会按登录态下发原画（rate=0）与长期有效的流地址（expire=0）
+        # 注意：cookies 只保存在实例上、用于取流请求，**不写入 session**，
+        # 因此开播判断/房间信息（betard）始终是匿名的。
+        if isinstance(douyu_watch_cookies, str) and douyu_watch_cookies.strip().lower() == 'none':
+            douyu_watch_cookies = None # 与 bilibili 一致：设置为 'None' 表示不登录
+        elif not douyu_watch_cookies:
+            douyu_watch_cookies = DOUYU_DEFAULT_COOKIES
+        if douyu_watch_cookies:
+            try:
+                watch_cookies = load_cookies(douyu_watch_cookies)
+            except Exception as e:
+                logger.warning(f"{self.plugin_msg}: cookies 解析失败，将使用无登录模式: {e}")
+                watch_cookies = {}
+            if watch_cookies:
+                self.__watch_cookies = watch_cookies
+                self.__use_login_cookies = True
+                logger.debug(f"{self.plugin_msg}: 取流时使用登录 cookies（原画、expire=0）")
+            elif douyu_watch_cookies == DOUYU_DEFAULT_COOKIES:
+                logger.debug(f"{self.plugin_msg}: 未找到 cookies 文件 {douyu_watch_cookies}，将使用无登录模式")
+            else:
+                logger.warning(f"{self.plugin_msg}: 未从 {douyu_watch_cookies} 读取到 cookies，将使用无登录模式")
+
+        if stream_cdn == 'vod':
+            try:
+                vod_resp = self.sess.get(f'https://www.douyu.com/japi/universe/playback/getVodStream?rid={self.rid}&startTime={int(time.time())}',
+                                         headers=self.fake_headers, cookies=self.__watch_cookies or None, timeout=5)
+                vod_resp.raise_for_status()
+                vod_data = vod_resp.json()
+                vod_url = vod_data['data']['timeshiftUrl']
+                return [{
+                    'stream_url': vod_url,
+                }]
+            except Exception as e:
+                logger.warning(f"{self.plugin_msg}: 获取回放流失败 {e}")
+
+        if stream_cdn:
+            self.__req_query['cdn'] = stream_cdn
+
+        play_info = None
         for _ in range(2): # 允许多重试一次以剔除 scdn
             # self.__js_runable = False
             try:
@@ -314,29 +418,33 @@ class douyu(BaseAPI):
                     logger.debug(f"{self.plugin_msg}: 回避 scdn 为 {new_cdn}")
                     self.__req_query['cdn'] = new_cdn
                     continue
-            except (RuntimeError, ValueError) as e:
+            except Exception as e:
                 logger.warning(f"{self.plugin_msg}: {e}")
+
+        if not play_info:
+            raise RuntimeError(f"{self.plugin_msg}: 获取播放信息失败，无法获取直播流")
 
         raw_stream_url = f"{play_info['rtmp_url']}/{play_info['rtmp_live']}"
 
         # HACK: 构造 hs-h5 cdn 直播流链接
         # self.douyu_cdn = 'hs-h5'
         # 修改：当用户选择 hs-h5 时，允许通过配置强制构造 hs 链接（即使 play_info 已经返回 hs-h5）
-        if stream_cdn == 'hs-h5':
-            need_build = play_info['rtmp_cdn'] != 'hs-h5'
-            if need_build:
-                if not self.__js_runable:
-                    logger.warning(f"{self.plugin_msg}: 未找到 jsengine，无法构建 hs-h5 链接")
-                is_tct = play_info['rtmp_cdn'] == 'tct-h5'
-                try:
-                    fake_host, cname_url = self.build_hs_url(raw_stream_url, is_tct)
-                except:
-                    logger.exception(f"{self.plugin_msg}: 构建 hs-h5 链接失败")
-                else:
-                    raw_stream_url = cname_url
-                    self.stream_headers['Host'] = fake_host
-            else:
-                logger.debug(f"{self.plugin_msg}: play_info 返回的 rtmp_cdn 已是 hs-h5，且未开启 douyu_force_hs，跳过构建 hs-h5")
+        # if stream_cdn == 'hs-h5':
+        #     need_build = play_info['rtmp_cdn'] != 'hs-h5'
+        #     if need_build:
+        #         if not self.__js_runable:
+        #             logger.warning(f"{self.plugin_msg}: 未找到 jsengine，无法构建 hs-h5 链接")
+        #         is_tct = play_info['rtmp_cdn'] == 'tct-h5'
+        #         try:
+        #             fake_host, cname_url = self.build_hs_url(raw_stream_url, is_tct)
+        #         except:
+        #             logger.exception(f"{self.plugin_msg}: 构建 hs-h5 链接失败")
+        #         else:
+        #             raw_stream_url = cname_url
+        #             self.stream_headers['Host'] = fake_host
+        #     else:
+        #         logger.debug(f"{self.plugin_msg}: play_info 返回的 rtmp_cdn 已是 hs-h5，且未开启 douyu_force_hs，跳过构建 hs-h5")
+        
         return [{
             'stream_url': raw_stream_url,
         }]
@@ -358,12 +466,14 @@ class DouyuUtils:
     _update_key_event: threading.Event = None
 
     @staticmethod
-    def is_key_valid():
-        return (
-            bool(DouyuUtils.WhiteEncryptKey) # Key 存在
-            and
-            DouyuUtils.WhiteEncryptKey.get('expire_at', 0) > int(time.time()) # Key 过期
-        )
+    def is_key_valid(sign_type: str = "stream"):
+        if not DouyuUtils.WhiteEncryptKey:
+            return False
+        if sign_type == "stream":
+            expire_at = DouyuUtils.WhiteEncryptKey.get('expire_at', 0)
+        else:
+            expire_at = DouyuUtils.WhiteEncryptKey.get('cpp', {}).get('expire_at', 0)
+        return expire_at > int(time.time())
 
     @staticmethod
     def update_key(
@@ -385,8 +495,7 @@ class DouyuUtils:
 
         try:
             # 防风控
-            with DouyuUtils._lock:
-                DouyuUtils.UserAgent = random_user_agent()
+            DouyuUtils.UserAgent = random_user_agent()
 
             rsp = requests.get(
                 f"https://{domain}/wgapi/livenc/liveweb/websec/getEncryption",
@@ -409,14 +518,13 @@ class DouyuUtils:
             return False
         finally:
             with DouyuUtils._lock:
-                if DouyuUtils._update_key_event is not None:
-                    DouyuUtils._update_key_event.set()
-                    DouyuUtils._update_key_event = None
+                DouyuUtils._update_key_event.set()
+                DouyuUtils._update_key_event = None
 
 
     @staticmethod
     def sign(
-        type: str, # unused
+        sign_type: str, # unused
         ts: int,
         did: str,
         rid: Union[str, int],
@@ -432,15 +540,13 @@ class DouyuUtils:
 
         # 确保密钥有效
         for _ in range(2): # 重试两次
-            if not DouyuUtils.is_key_valid():
-                if not (DouyuUtils.update_key()):
-                    continue
-            break
+            if DouyuUtils.is_key_valid(sign_type) or DouyuUtils.update_key():
+                break
         else:
             raise RuntimeError("获取加密密钥失败")
 
-        if not type:
-            type = "stream"
+        if not sign_type:
+            sign_type = "stream"
         if not ts:
             ts = int(time.time())
         if not did:
@@ -448,12 +554,22 @@ class DouyuUtils:
 
         rand_str = DouyuUtils.WhiteEncryptKey['rand_str']
         enc_time = DouyuUtils.WhiteEncryptKey['enc_time']
-        key = DouyuUtils.WhiteEncryptKey['key']
-        is_special = DouyuUtils.WhiteEncryptKey['is_special']
-        key_data = {k: v for k, v in DouyuUtils.WhiteEncryptKey.items() if k not in ["cpp"]}
+        key_data = {k: v for k, v in DouyuUtils.WhiteEncryptKey.items() if k != "cpp"}
+
+        _CPP_SECTION = {"login": "danmu", "heartbeat": "heartbeat"}
+
+        if sign_type == "stream":
+            salt = "" if DouyuUtils.WhiteEncryptKey['is_special'] == 1 else f"{rid}{ts}"
+            key = DouyuUtils.WhiteEncryptKey['key']
+            key_ver = ""
+        elif cpp_section := _CPP_SECTION.get(sign_type):
+            cpp = DouyuUtils.WhiteEncryptKey['cpp'][cpp_section]
+            salt = f"{rid}{did}{ts}"
+            key, key_ver = cpp['key'], cpp['key_ver']
+        else:
+            raise ValueError(f"wrong sign type: {sign_type}")
 
         secret = rand_str
-        salt = "" if is_special else f"{rid}{ts}"
         for _ in range(enc_time):
             secret = hashlib.md5(f"{secret}{key}".encode('utf-8')).hexdigest()
         auth = hashlib.md5(f"{secret}{key}{salt}".encode('utf-8')).hexdigest()
@@ -461,7 +577,7 @@ class DouyuUtils:
         return {
             'key': key_data,
             'alg_ver': "1.0",
-            "key_ver": "",
+            'key_ver': key_ver,
             'auth': auth,
             'ts': ts,
         }
