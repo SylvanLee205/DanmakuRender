@@ -36,8 +36,8 @@ class _ConsoleNoiseFilter(logging.Filter):
     ⚠️ 为什么不用"提高级别"来解决：
         因为用户希望**保留**这些：
             下载任务 U 已启动。          (engine, INFO)
-            U: 直播已结束.               (liveevents, INFO)
-            一一一天: 直播开始.           (PROGRESS)
+            U: 直播已结束.               (liveevents, PROGRESS)
+            U: 直播开始                  (liveevents, PROGRESS)
             解析直播间失败 / ERROR / WARNING
         如果简单提高到 WARNING，这些就全没了，用户就不知道主播有没有加载成功。
         所以做法是：**放行绝大部分消息，只精确丢掉那一种噪音。**
@@ -359,7 +359,8 @@ if __name__ == '__main__':
     # 注意：这里**不**再打印"已加载 N 个主播"之类的汇总横幅。
     # 因为控制台已经会逐个输出：
     #     [engine][info]: 下载任务 XXX 已启动。
-    #     [liveevents][info]: XXX: 直播已结束.   (或 直播开始.)
+    #     [liveevents][PROGRESS]: XXX: 直播已结束.   (或 直播开始.)
+# 注意：直播状态是 PROGRESS 级别（25），不是 INFO —— 见 docs/控制台日志格式规范.md
     # 用户扫一眼终端就能看出哪个主播加载成功、哪个开播了 —— 这比汇总更有用。
     # 也不打印"控制台会空白"的提示，避免和真实日志混淆。
 
