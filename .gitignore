@@ -45,3 +45,13 @@ DMR-**.yml
 *.old
 *~
 /backups/
+
+# ⚠️ 重要：configs/global.yml 是**用户个人配置**（含上传路径、跳过规则、
+#    网盘参数），绝不能发布。它曾经被 git 跟踪，所以原有的 global*.yml
+#    规则对它**不生效**（.gitignore 只忽略未跟踪文件）。
+#    2026-10-16 发布 v5.1.0 时发现它漏进了源码包，已 git rm --cached。
+configs/global.yml
+configs/global.ymal
+configs/*.bak
+configs/*.bak2
+*.BROKEN-*
