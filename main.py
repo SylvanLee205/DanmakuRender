@@ -127,6 +127,112 @@ def _startup_recover(config, logger, enabled=True, wait=False, min_age_minutes=2
     return t
 
 
+def _verify_configs(config, logger):
+    """启动时校验配置完整性。
+
+    ⚠️ 为什么需要：
+        configs/ 是唯一的真实配置源，装着 global.yml（含我们的魔改：rclone
+        上传、跳过上传规则、清理规则等）和 33 个主播的任务配置。
+        2026-10-15 合并上游时就差点踩坑 —— dev 的 global.yml 丢了
+        upload_args_task_default（上传规则本体）和 clean_args，
+        而且 rclone 的 realtime 被改成 True（会改变上传行为）。
+        当时靠人工发现才避开。这个校验把它变成自动的。
+
+    检查三件事：
+        1. global.yml 存在，且关键配置段都在
+        2. 任务配置数量（和状态库/预期对比，骤减就报警）
+        3. 和最近一次配置快照做差异校验（若有快照）
+
+    任何异常都只记日志，绝不阻断启动。
+    """
+    try:
+        import glob as _glob
+        import yaml as _yaml
+
+        logger.info('=' * 60)
+        logger.info('配置完整性校验')
+
+        # 1. global.yml 关键段
+        cfg_path = 'configs/global.yml'
+        CRITICAL = [
+            ('upload_args', '上传配置（含 rclone 网盘）'),
+            ('upload_args_task_default', '上传规则本体'),
+            ('clean_args', '清理配置'),
+            ('render_args', '渲染配置'),
+            ('download_args', '下载配置'),
+        ]
+        missing = []
+        if not exists(cfg_path):
+            missing.append('global.yml（整个文件缺失！）')
+        else:
+            try:
+                txt = open(cfg_path, encoding='utf-8').read()
+            except Exception:
+                txt = ''
+            for key, desc in CRITICAL:
+                if key not in txt:
+                    missing.append(f'{key} —— {desc}')
+
+        if missing:
+            logger.error('配置缺失 %d 项，**上传/清理可能失效**：', len(missing))
+            for m in missing:
+                logger.error('    ❌ %s', m)
+            logger.error('    恢复方法: python tools\\backup_configs.py list')
+            logger.error('              python tools\\backup_configs.py restore <快照名>')
+        else:
+            logger.info('  ✅ global.yml 关键段完整')
+
+        # 2. 任务配置数量
+        tasks = [f for f in _glob.glob('configs/*.yml')
+                 if not os.path.basename(f).startswith('global')]
+        logger.info('  ✅ 任务配置 %d 个', len(tasks))
+        if len(tasks) == 0:
+            logger.error('  ❌ 一个任务配置都没有！configs 目录可能被清空了。')
+        elif len(tasks) < 10:
+            logger.warning('  ⚠️ 任务配置只有 %d 个，明显偏少（正常 30+），'
+                           '请确认是否被误删。', len(tasks))
+
+        # 3. 和最近快照对比
+        snap_root = r'F:\_DMR配置快照'
+        try:
+            if os.path.isdir(snap_root):
+                snaps = sorted(d for d in os.listdir(snap_root)
+                               if os.path.isdir(os.path.join(snap_root, d)))
+                if snaps:
+                    mf = os.path.join(snap_root, snaps[-1], 'manifest.json')
+                    if exists(mf):
+                        import json as _json
+                        man = _json.load(open(mf, encoding='utf-8'))
+                        cur = set()
+                        for root, dirs, files in os.walk('configs'):
+                            dirs[:] = [d for d in dirs if d != '__pycache__']
+                            for f in files:
+                                cur.add(os.path.relpath(os.path.join(root, f),
+                                                        'configs'))
+                        lost = sorted(set(man.get('files', {})) - cur)
+                        if lost:
+                            logger.error('  ❌ 相比快照 %s 丢失 %d 个配置:',
+                                         snaps[-1], len(lost))
+                            for x in lost[:8]:
+                                logger.error('        %s', x)
+                            if len(lost) > 8:
+                                logger.error('        ... 还有 %d 个', len(lost) - 8)
+                            logger.error('    恢复: python tools\\backup_configs.py '
+                                         'restore %s', snaps[-1])
+                        else:
+                            logger.info('  ✅ 与最近快照一致（%s）', snaps[-1])
+        except Exception as e:
+            logger.debug('快照对比跳过: %s', e)
+
+        logger.info('=' * 60)
+    except Exception as e:
+        # 校验本身绝不能影响启动
+        try:
+            logger.debug(f'配置校验过程出错（不影响启动）: {type(e).__name__}: {e}')
+        except Exception:
+            pass
+
+
 if __name__ == '__main__':    
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', default='configs/global.yml')
@@ -243,6 +349,9 @@ if __name__ == '__main__':
                      enabled=not args.no_recover,
                      wait=args.recover_wait,
                      min_age_minutes=args.recover_min_age)
+
+    # 启动时校验配置完整性（防止 configs 被误删/覆盖）
+    _verify_configs(config, logger)
 
     dmr = DanmakuRender(config, logger=logger, debug=args.debug)
     dmr.start()
