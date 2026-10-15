@@ -234,7 +234,24 @@ class DanmakuRender():
             update_type, update_info = self.config.check_update()
             
             if update_type == 'global':
-                self.logger.info('检测到全局配置更新，请重启程序以生效。')
+                # ⚠️ 2026-10-16：原来只是一行 info，会被 33 个任务的输出瞬间冲走，
+                #    用户反映"没看到重启提示"。改成醒目的横幅 + 提醒，
+                #    并在后续检查里重复最多 3 次（每次间隔由引擎的检查周期决定），
+                #    避免重启前就忘了这件事。仍然只在控制台/日志各打一遍，
+                #    不会刷屏。
+                self._config_update_notices = getattr(
+                    self, '_config_update_notices', 0) + 1
+                if self._config_update_notices <= 3:
+                    _times = (f'（第 {self._config_update_notices} 次提醒）'
+                              if self._config_update_notices > 1 else '')
+                    self.logger.warning(
+                        '\n'
+                        '  ' + '=' * 58 + '\n'
+                        '  ⚠️  全局配置已更新，但**需要重启程序才会生效**！' + _times + '\n'
+                        '      改的是: configs/global.yml\n'
+                        '      重启方法: 关闭当前程序（或在终端按 Ctrl+C），\n'
+                        '                Start_Render.bat 会自动把它拉起来。\n'
+                        '  ' + '=' * 58)
             
             elif update_type == 'tasks':
                 for config_path in update_info['new']:

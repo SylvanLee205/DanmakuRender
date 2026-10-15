@@ -1,1 +1,1 @@
-DanmakuRender 已启动
+⚠️ DanmakuRender 频繁重启（3次/时）

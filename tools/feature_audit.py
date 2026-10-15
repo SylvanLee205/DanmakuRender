@@ -210,5 +210,85 @@ else:
 
 print()
 print('=' * 78)
+print('D. 接线检查：方法定义了但没人调用（GOP/跳过规则的漏洞类型）')
+print('=' * 78)
+# ⚠️ 为什么单独做这一节：
+#    功能"写了但没接上"时，语法正确、方法存在、静态检查全过，
+#    但实际不生效。已经踩过两次：
+#      · _build_gop_args  —— 方法在，render_helper 里没调用
+#      · _get_upload_skip_rule / _mark_upload_skipped —— 方法在，_check_for_upload 里没调用
+#    所以对关键功能必须同时验证"定义存在"和"有调用点"。
+import ast as _ast
+
+_defined, _called = {}, set()
+# ⚠️ 扫描范围必须包含项目根的 main.py —— _verify_configs /
+#    _verify_critical_names / _startup_recover 都定义在那里，只扫 DMR/ 会漏。
+_ROOT_FILES = ['main.py']
+_scan = [os.path.join(PROD, x) for x in _ROOT_FILES]
+for _root, _dirs, _files in os.walk(os.path.join(PROD, 'DMR')):
+    _dirs[:] = [d for d in _dirs if d != '__pycache__']
+    for _f in _files:
+        if _f.endswith('.py'):
+            _scan.append(os.path.join(_root, _f))
+for _p in _scan:
+    if not os.path.exists(_p):
+        continue
+    _rel = os.path.relpath(_p, PROD)
+    try:
+        _tree = _ast.parse(open(_p, encoding='utf-8', errors='replace').read())
+    except Exception:
+        continue
+    for _n in _ast.walk(_tree):
+        if isinstance(_n, (_ast.FunctionDef, _ast.AsyncFunctionDef,
+                           _ast.ClassDef)):
+            _defined.setdefault(_n.name, []).append(_rel)
+        if isinstance(_n, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+            # 模块级调用（main.py 里直接调 _verify_configs(...)）
+            pass
+        if isinstance(_n, _ast.Call):
+            _fn = _n.func
+            if (isinstance(_fn, _ast.Attribute)
+                    and isinstance(_fn.value, _ast.Name)
+                    and _fn.value.id == 'self'):
+                _called.add(_fn.attr)
+            elif isinstance(_fn, _ast.Name):
+                # 直接名字调用，如 _verify_configs(config, logger)
+                _called.add(_fn.id)
+
+# 只检查我们魔改/移植进来的关键方法（上游大量工具方法不在此列）
+WATCH = [
+    '_build_gop_args', '_parse_gop_multiplier', '_check_encoder_args',
+    '_prepare_danmaku', '_notify_live',
+    '_get_upload_skip_rule', '_mark_upload_skipped',
+    '_inject_state_repo', '_with_state_repo', '_record_segment',
+    '_ensure_session', '_sync_artifact', '_sync_upload_group',
+    '_handle_unusable', '_promote_intermediate_name', '_passes_length_gate',
+    '_free_state_memory', '_verify_configs', '_verify_critical_names',
+    '_startup_recover', '_ConsoleNoiseFilter',
+]
+_orphans = []
+for _m in sorted(WATCH):
+    _d = _defined.get(_m)
+    _c = _m in _called
+    if _d and not _c:
+        _orphans.append((_m, _d[0]))
+print(f'  检查 {len(WATCH)} 个关键方法:')
+for _m in sorted(WATCH):
+    _d = _defined.get(_m)
+    if _d:
+        _c = _m in _called
+        if not _c:
+            print(f'    🔴 {_m:26} 定义了但**没有调用点**！  ({_d[0]})')
+    else:
+        print(f'    ⚪ {_m:26} 未定义（可能已不需要）')
+if _orphans:
+    print()
+    print(f'  🔴 {len(_orphans)} 个方法"定义了但没人调用" —— 功能不会生效！')
+    fails += len(_orphans)
+else:
+    print(f'  ✅ 全部关键方法都有调用点')
+
+print()
+print('=' * 78)
 print(f'总结：{"✅ 全部通过" if fails == 0 else f"❌ 发现 {fails} 个问题"}')
 print('=' * 78)

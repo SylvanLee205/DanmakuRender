@@ -19,3 +19,7 @@ pillow
 flask
 dmconvert
 
+
+# ── 测试依赖（仅运行 unit_tests 需要，DMR 运行时不依赖）──
+# 上游漏声明；不装的话 test_downloader_memory.py 整个文件被跳过
+psutil

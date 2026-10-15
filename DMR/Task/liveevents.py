@@ -657,11 +657,21 @@ class LiveEvents(BaseEvents):
         if not self.state_dict.get(group_id):
             return ret_msgs
         upload_args = self.config['upload_args']
+        # 「高质量大文件跳过上传」规则的配置（render_args.dmrender.skip_upload_rule）
+        # ⚠️ 2026-10-16 全盘复查发现：合并上游时 liveevents.py 取上游版为基础，
+        #    我们的 _get_upload_skip_rule / _mark_upload_skipped 只搬了方法定义，
+        #    **漏了这里的调用点** —— 导致跳过上传规则完全失效（横屏/高码率/高帧率
+        #    的视频本应跳过，却全被上传，白占带宽和网盘空间）。
+        skip_rule = self._get_upload_skip_rule()
         for idx, video_state in enumerate(self.state_dict[group_id]):
             if _idx is not None and idx != _idx:
                 continue
             for vtype, info in video_state.items():
                 if info['status'] != 'ready':
+                    continue
+                # 命中跳过规则 → 标成 upload_skipped（清理流程据此判定"该传的都处理完了"）。
+                # 标记必须在提交上传任务之前，否则状态已被置为 uploading。
+                if self._mark_upload_skipped(video_state, vtype, info, skip_rule):
                     continue
                 for upload_file_types, upload_arg in upload_args.items():
                     # 判断当前视频是否需要上传
@@ -707,8 +717,13 @@ class LiveEvents(BaseEvents):
                 # 检查是否全部准备上传
                 videos = []
                 for idx, video_state in enumerate(self.state_dict[group_id]):
-                    if video_state[vtype]['status'] == 'ready':
+                    st = video_state[vtype]['status']
+                    if st == 'ready':
                         videos.append(video_state[vtype]['file'])
+                    elif st == 'upload_skipped':
+                        # 命中跳过规则的分段视作"该传的已处理完"，否则非实时路径
+                        # 会因为永远凑不齐 ready 而完全不提交上传
+                        continue
                     else:
                         videos = []
                         break
