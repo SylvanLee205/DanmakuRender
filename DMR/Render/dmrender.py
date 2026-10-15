@@ -198,6 +198,12 @@ class DmRender(BaseRender):
             filter_name, filter_str,
 
             '-c:v', self.vencoder,
+            # GOP（关键帧间隔）自动设置：gop_multiplier = N 时 -g = round(源帧率 × N)。
+            # ⚠️ 2026-10-15 复查发现：合并上游时这个调用点漏了，
+            #    导致 gop_multiplier=8 的配置**完全没生效**（方法定义了但没人调）。
+            #    放在 -c:v 之后、用户 vencoder_args 之前 —— 这样若用户在
+            #    vencoder_args 里自己写了 -g，会覆盖我们的值（符合预期）。
+            *self._build_gop_args(video),
             *self.vencoder_args,
             '-c:a', self.aencoder,
             *self.aencoder_args,
