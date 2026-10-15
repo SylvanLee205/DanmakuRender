@@ -52,11 +52,17 @@ if not r:
     fails += 1
 
 # 3. 弹幕只收弹幕+礼物（过滤进场）
+#    ⚠️ 实际键名是 download_args.live.dm_filter.dm_type，不是 dm_include_types
 p = os.path.join(PROD, 'configs', 'global.yml')
 cfg = open(p, encoding='utf-8').read()
-r = show('A3 弹幕只收弹幕+礼物', 'configs/global.yml',
-         ['dm_include_types', 'gift'])
-if not r:
+import yaml as _yaml
+_cd = _yaml.safe_load(cfg) or {}
+_dmt = (((_cd.get('download_args') or {}).get('live') or {})
+        .get('dm_filter') or {}).get('dm_type')
+_ok_dmt = _dmt == ['danmaku', 'gift']
+print(f'  {"✅" if _ok_dmt else "❌"} {"A3 弹幕只收弹幕+礼物":36} '
+      f'dm_filter.dm_type = {_dmt!r}')
+if not _ok_dmt:
     fails += 1
 
 # 4. 跳过上传规则（横屏必选）
@@ -101,10 +107,14 @@ r = show('A10 编码器参数校验(防0字节)', 'DMR/Render/dmrender.py',
 if not r:
     fails += 1
 
-# 11. 0 字节产物校验
-r = show('A11 0字节产物校验', 'DMR/Render/dmrender.py',
-         ['渲染产物为 0 字节'])
+# 11. 0 字节产物保险闸（第二道闸；上游已在 Render/ffmpeg.py 从根因修过）
+r = show('A11 0字节产物保险闸', 'DMR/Render/dmrender.py',
+         ['渲染产物为 0 字节', 'out_size'])
 if not r:
+    fails += 1
+r2 = show('A11b 上游根治(读ffmpeg退出码)', 'DMR/Render/ffmpeg.py',
+          ['returncode = self.render_proc.wait()'])
+if not r2:
     fails += 1
 
 # 12. 心跳日志
@@ -174,29 +184,29 @@ print('C. 配置项与代码读取是否对得上')
 print('=' * 78)
 import yaml
 gc = yaml.safe_load(open(p, encoding='utf-8')) or {}
-# 代码里读取的顶级键
+gcd = yaml.safe_load(open(os.path.join(PROD, 'DMR', 'Config', 'default.yml'),
+                          encoding='utf-8')) or {}
+# 只扫描**引擎级**文件 —— 任务级文件（downloaders/uploaders）里的
+# config['title'] 之类是任务配置的键，不是全局配置，扫进来会全是误报。
 code_keys = set()
-for root, dirs, files in os.walk(os.path.join(PROD, 'DMR')):
-    dirs[:] = [d for d in dirs if d != '__pycache__']
-    for f in files:
-        if not f.endswith('.py'):
-            continue
-        t = open(os.path.join(root, f), encoding='utf-8', errors='replace').read()
-        for m in re.finditer(r"get_config\(['\"](\w+)['\"]", t):
-            code_keys.add(m.group(1))
-        for m in re.finditer(r"config\[['\"](\w+)['\"]\]", t):
-            code_keys.add(m.group(1))
+for rel in ('DMR/__init__.py', 'DMR/engine.py', 'DMR/Config/__init__.py'):
+    _fp = os.path.join(PROD, rel)
+    if not os.path.exists(_fp):
+        continue
+    t = open(_fp, encoding='utf-8', errors='replace').read()
+    for m in re.finditer(r"get_config\(['\"](\w+)['\"]", t):
+        code_keys.add(m.group(1))
+    for m in re.finditer(r"global_config\[['\"](\w+)['\"]\]", t):
+        code_keys.add(m.group(1))
+    for m in re.finditer(r"global_config\.get\(['\"](\w+)['\"]", t):
+        code_keys.add(m.group(1))
 print(f'  代码读取的配置键: {sorted(code_keys)}')
-missing = [k for k in code_keys if k not in gc and k not in
-           ('state_repo', 'common_event_args', 'download_args', 'render_args',
-            'upload_args', 'clean_args', 'args', 'engine', 'files', 'method',
-            'mode', 'video', 'output', 'upload_group', 'source', 'version',
-            'sync', 'dynamic', 'resume', 'delay', 'extra_kwargs', 'state')]
+missing = [k for k in code_keys if k not in gc and k not in gcd]
 if missing:
-    print(f'  ⚠️ 配置里找不到的键: {missing}')
+    print(f'  ⚠️ global.yml 与 default.yml 里都找不到的键: {missing}')
     fails += len(missing)
 else:
-    print(f'  ✅ 代码读取的全局配置键都能在 configs 里找到（或由 default.yml 补齐）')
+    print(f'  ✅ 代码读取的全局配置键都能在 global.yml 或 default.yml 里找到')
 
 print()
 print('=' * 78)
