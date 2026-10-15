@@ -233,6 +233,68 @@ def _verify_configs(config, logger):
             pass
 
 
+def _verify_critical_names(logger):
+    """启动自检：确保渲染/上传路径需要的名字都能拿到。
+
+    ⚠️ 为什么需要（2026-10-15 事故）：
+        合并上游时 DMR/utils/__init__.py 少了 `from .xml2ass import *`，
+        导致 dmrender.py 的 `from DMR.utils import *` 拿不到 is_danmaku_xml。
+        这个错误**只在真正渲染时才暴露**，后果是每个分段都渲染失败
+        （3 个分段 2.3 GB 白白滞留，直到用户发现终端在报错）。
+
+        注意：`import DMR.Render.dmrender` 本身是成功的 ——
+        因为 is_danmaku_xml 在函数体内使用，只有调用时才解析名字。
+        所以必须**显式检查这些名字是否存在**，不能只测"模块能导入"。
+
+    任何异常都只记日志，绝不阻断启动。
+    """
+    try:
+        import importlib
+
+        CHECK = [
+            ('DMR.Render.dmrender',
+             ['is_danmaku_xml', 'xml_to_ass', 'DEFAULT_ASS_SUFFIX',
+              'FFprobe', 'VideoInfo', 'StreamerInfo', 'safe_filename',
+              'replace_keywords']),
+            ('DMR.Cleaner', ['basename', 'FileInfo', 'exists', 'isdir']),
+            ('DMR.Uploader', ['VideoInfo', 'Uploader']),
+            ('DMR.Downloader.stream_downloader',
+             ['basename', 'VideoInfo', 'StreamerInfo', 'replace_keywords',
+              'rename_safe', 'FFprobe']),
+            ('DMR.Task.liveevents',
+             ['PROGRESS', 'PipeMessage', 'VideoInfo', 'ArtifactState',
+              'ArtifactKind']),
+        ]
+
+        problems = []
+        for mod, names in CHECK:
+            try:
+                m = importlib.import_module(mod)
+            except Exception as e:
+                problems.append(f'{mod} 无法导入: {type(e).__name__}: {e}')
+                continue
+            miss = [n for n in names if not hasattr(m, n)]
+            if miss:
+                problems.append(f'{mod} 缺少名字: {miss}')
+
+        if problems:
+            logger.error('=' * 60)
+            logger.error('启动自检发现问题 %d 项 —— **渲染/上传会失败**：',
+                         len(problems))
+            for p in problems:
+                logger.error('    ❌ %s', p)
+            logger.error('    常见原因：某个 __init__.py 少了 `from .xxx import *`')
+            logger.error('    检查工具: python tools\\check_critical_names.py')
+            logger.error('=' * 60)
+        else:
+            logger.info('  ✅ 关键名字自检通过（渲染/上传路径正常）')
+    except Exception as e:
+        try:
+            logger.debug(f'关键名字自检出错（不影响启动）: {type(e).__name__}: {e}')
+        except Exception:
+            pass
+
+
 if __name__ == '__main__':    
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', default='configs/global.yml')
@@ -352,6 +414,9 @@ if __name__ == '__main__':
 
     # 启动时校验配置完整性（防止 configs 被误删/覆盖）
     _verify_configs(config, logger)
+
+    # 启动时自检关键名字（防止"用了但拿不到"导致渲染/上传静默失败）
+    _verify_critical_names(logger)
 
     dmr = DanmakuRender(config, logger=logger, debug=args.debug)
     dmr.start()
