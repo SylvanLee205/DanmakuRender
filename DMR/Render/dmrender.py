@@ -227,6 +227,27 @@ class DmRender(BaseRender):
         finally:
             # 必须等 ffmpeg 渲染结束才能删：subtitles 滤镜是在渲染期间读这个文件的
             self._remove_quietly(temp_danmaku)
+
+        # ⚠️ 保险闸：即使 ffmpeg 报成功，也要校验产物非空。
+        # 上游已在 Render/ffmpeg.py 从根因修过（改为读 wait() 退出码，不再靠
+        # 日志里有没有 "video:" 猜成功），所以正常情况下这里不会触发。
+        # 但 2026-10-05 的事故教训是：0 字节产物一旦被当成品，下游会上传空文件、
+        # 并让清理逻辑删掉源视频（不可恢复）。多一道校验成本极低，故保留。
+        if status:
+            try:
+                out_size = os.path.getsize(output) if exists(output) else 0
+            except OSError:
+                out_size = 0
+            if out_size == 0:
+                try:
+                    if exists(output):
+                        os.remove(output)
+                except Exception as e:
+                    self.logger.warning(f'删除 0 字节产物失败 {output}: {e}')
+                return False, (f'渲染产物为 0 字节，已删除（源视频保留）。'
+                               f'通常是 ffmpeg 参数错误，ffmpeg 输出尾部:\n'
+                               f'{str(info)[-800:]}')
+
         if status:
             output_info:VideoInfo = copy.deepcopy(video)
             output_info.dtype = 'dm_video'
