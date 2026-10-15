@@ -16,7 +16,12 @@ class Downloader():
         self.kwargs = kwargs
         self.stoped = True
 
-        # 状态持久化（P1）：下载任务用它登记录制场次与已完成的产物分段
+        # 状态持久化（P1）：下载任务用它登记录制场次与已完成的产物分段。
+        # ⚠️ 2026-10-15 复查发现：合并上游时这个参数漏了，导致
+        #    Downloader 实例没有 state_repo 属性，newtask 也就无法把它
+        #    透传给 StreamDownloadTask —— 结果"分段登记到状态库"是哑的
+        #    （unit_tests/test_state_init.py::test_downloader_plugin_receives_state_repo
+        #      正好抓到了这个）。现已补齐。
         self.state_repo = state_repo
 
         self._piperecvprocess = None
@@ -78,7 +83,8 @@ class Downloader():
         elif dltype == 'virtual':
             from .virtual_downloader import VirtualDownloaderTask
             downloader_task = VirtualDownloaderTask
-        
+
+        # 把状态库透传给具体的下载任务（StreamDownloadTask 用它登记场次与分段）
         if self.state_repo is not None:
             config = {**config, 'state_repo': self.state_repo}
         self.download_tasks[taskname] = downloader_task(taskname=taskname, send_queue=self.send_queue, **config)
