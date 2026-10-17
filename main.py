@@ -233,6 +233,101 @@ def _verify_configs(config, logger):
             pass
 
 
+def _verify_pipeline_switches(config, logger):
+    """启动自检：检查每个任务的"自动化开关"，防止它们被静默翻转。
+
+    ⚠️ 为什么需要（真实风险）：
+        每个任务配置里的 common_event_args 控制整条流水线：
+            auto_render  录完是否自动渲染
+            auto_upload  渲染完是否自动上传
+            auto_clean   上传完是否自动清理
+
+        这些开关**没有任何保护** —— 一旦配置被覆盖（比如把 Mod 的配置
+        同步到生产，而 Mod 里 auto_upload=False），流水线就会**静默停掉**：
+        不报错、不警告、日志里一切正常，只是录播永远堆在本地不出去。
+        等发现时往往已经攒了几天几十 GB。
+
+        本函数在每次启动时把有效值打印出来，并在明显异常时给出醒目警告，
+        让"上传被关掉"这件事**不可能被忽略**。
+
+    判断逻辑：
+        auto_upload 全为 False  → 🔴 重度警告（上传链路已停）
+        auto_render 全为 False  → 🔴 重度警告（不会生成弹幕版）
+        auto_clean  全为 False  → 🟡 提示（本地文件会一直累积）
+        混合状态                → 逐项列出，便于核对是否本意
+
+    任何异常都只记日志，绝不阻断启动。
+    """
+    try:
+        rc = getattr(config, 'replay_config', None) or {}
+        if not rc:
+            logger.warning('流水线开关检查：未能读取任务配置（replay_config 为空）')
+            return
+
+        SWITCHES = [
+            ('auto_render', '自动渲染'),
+            ('auto_upload', '自动上传'),
+            ('auto_clean', '自动清理'),
+        ]
+        stats = {k: {'on': 0, 'off': 0, 'none': 0, 'off_tasks': []}
+                 for k, _ in SWITCHES}
+        for name, cfg in rc.items():
+            cea = ((cfg or {}).get('common_event_args') or {})
+            for key, _ in SWITCHES:
+                v = cea.get(key)
+                s = stats[key]
+                if v is True:
+                    s['on'] += 1
+                elif v is False:
+                    s['off'] += 1
+                    if len(s['off_tasks']) < 8:
+                        s['off_tasks'].append(name)
+                else:
+                    s['none'] += 1
+
+        total = len(rc)
+        logger.info('=' * 60)
+        logger.info('流水线开关检查（共 %d 个任务）', total)
+        for key, label in SWITCHES:
+            s = stats[key]
+            flag = '✅' if s['on'] == total else ('🟡' if s['on'] else '🔴')
+            logger.info('  %s %-10s 开启 %d / 关闭 %d / 未设置 %d',
+                        flag, label, s['on'], s['off'], s['none'])
+            if s['off'] and s['off'] < total:
+                logger.info('       关闭的任务：%s%s', ', '.join(s['off_tasks']),
+                            '…' if s['off'] > len(s['off_tasks']) else '')
+
+        # ── 重度警告：整条流水线被关掉 ──
+        if stats['auto_upload']['on'] == 0:
+            logger.warning(
+                '\n'
+                '  ' + '!' * 58 + '\n'
+                '  🔴 所有任务的 auto_upload 都是关闭状态 —— **上传链路已停！**\n'
+                '      后果：渲染出的弹幕版只会留在本地，永远不会传到网盘。\n'
+                '      排查：\n'
+                '        1) 是否把 Mod 的配置同步到了生产？（Mod 里 auto_upload=False）\n'
+                '        2) git -C F:\\DanmakuRender_AutoUp diff -- configs/\n'
+                '        3) python tools\\backup_configs.py verify\n'
+                '      恢复：python tools\\backup_configs.py restore <快照名>\n'
+                '  ' + '!' * 58)
+        if stats['auto_render']['on'] == 0:
+            logger.warning(
+                '\n'
+                '  ' + '!' * 58 + '\n'
+                '  🔴 所有任务的 auto_render 都是关闭状态 —— **不会生成弹幕版！**\n'
+                '      后果：只录到原始视频，不会渲染弹幕。\n'
+                '  ' + '!' * 58)
+        if stats['auto_clean']['on'] == 0:
+            logger.warning('  🟡 所有任务的 auto_clean 都关闭 —— '
+                           '本地源文件会一直累积（磁盘会慢慢满）')
+        logger.info('=' * 60)
+    except Exception as e:
+        try:
+            logger.debug(f'流水线开关检查出错（不影响启动）: {type(e).__name__}: {e}')
+        except Exception:
+            pass
+
+
 def _verify_critical_names(logger):
     """启动自检：确保渲染/上传路径需要的名字都能拿到。
 
@@ -417,6 +512,9 @@ if __name__ == '__main__':
 
     # 启动时自检关键名字（防止"用了但拿不到"导致渲染/上传静默失败）
     _verify_critical_names(logger)
+
+    # 启动时检查自动化开关（防 auto_upload 等被静默翻转，导致流水线无声停摆）
+    _verify_pipeline_switches(config, logger)
 
     dmr = DanmakuRender(config, logger=logger, debug=args.debug)
     dmr.start()
