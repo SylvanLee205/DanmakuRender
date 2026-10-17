@@ -1,5 +1,10 @@
 """清理"已确认上传成功"的本地文件（源视频 + 弹幕版 + 源弹幕）。
 
+⚠️⚠️ 2026-10-18 修正：本工具**只删源视频 + 源弹幕，永不删弹幕版**。
+
+    用户明确需求：弹幕版必须永久保留在本地（同时上传云端做备份）。
+    原版本会连带删除 dm_video —— 那是个错误，已修正。
+
 安全前提（缺一不删）：
   1. 该分段的 dm_video 状态必须是 uploaded
   2. dm_video 文件名必须在云端**确实存在**（实时 rclone 核对）
@@ -81,7 +86,8 @@ for key, g in sorted(groups.items()):
     if now - os.path.getmtime(dabs) < MIN_AGE_H * 3600:
         skipped_reasons.setdefault('文件太新', []).append(dbase)
         continue
-    to_delete.append((dabs, 'dm_video', os.path.getsize(dabs), dm))
+    # ⚠️ 绝对不删弹幕版！下面这行原实现已禁用（弹幕版必须永久保留本地）
+    # to_delete.append((dabs, 'dm_video', os.path.getsize(dabs), dm))
 
     # 源视频：只有不是 skipped 才删（skipped = 命中跳过规则、要留本地）
     sv = g.get('src_video')

@@ -856,19 +856,37 @@ class LiveEvents(BaseEvents):
                         # 原实现的赋值在循环之外，会对**所有**已上传产物无条件置为
                         # cleaned，导致"没清理的文件被当作已清理"而提前释放状态。
                         for arg in clean_arg:
-                            files = [info['file']]
+                            # ── 是否删除"当前这一种"视频本身 ──────────────
+                            # ⚠️ 2026-10-18 新增 w_dmfile（默认 True = 保持原行为）：
+                            #    用户的核心需求是「只删源视频，弹幕版必须留在本地
+                            #    且要上传」。而原来的清理逻辑只能"连弹幕版一起删"，
+                            #    满足不了这个需求。
+                            #    配法：clean_args 用 dm_video 键 + w_srcfile: True
+                            #         + w_dmfile: False
+                            #    效果：弹幕版上传成功后，只删源视频和源弹幕，
+                            #          弹幕版本身保留在本地（状态保持 uploaded）。
+                            keep_self = (vtype == 'dm_video'
+                                         and arg.get('w_dmfile', True) is False)
+                            files = [] if keep_self else [info['file']]
+
                             # 判断是否需要清理源文件
                             if vtype == 'dm_video' and arg.get('w_srcfile', False) == True and video_state['src_video']['file'] is not None:
-                                files.append(video_state['src_video']['file'])
-                                self.state_dict[group_id][idx]['src_video']['status'] = 'cleaned'
-                                self._sync_artifact(group_id, 'src_video', idx + 1,
-                                                    state=ArtifactState.CLEANED)
+                                # 已经清过的不要重复提交（否则每轮事件都白删一次）
+                                if video_state['src_video'].get('status') != 'cleaned':
+                                    files.append(video_state['src_video']['file'])
+                                    self.state_dict[group_id][idx]['src_video']['status'] = 'cleaned'
+                                    self._sync_artifact(group_id, 'src_video', idx + 1,
+                                                        state=ArtifactState.CLEANED)
                             # 判断是否需要清理源文件（转码前）
                             if vtype == 'src_video' and arg.get('w_srcpre', True) == True and video_state['src_video_pre']['file'] is not None:
                                 files.append(video_state['src_video_pre']['file'])
                                 self.state_dict[group_id][idx]['src_video_pre']['status'] = 'cleaned'
                                 self._sync_artifact(group_id, 'src_video_pre', idx + 1,
                                                     state=ArtifactState.CLEANED)
+
+                            # 没有任何文件要删（例如 keep_self 且无源文件可删）→ 跳过
+                            if not files:
+                                continue
 
                             clean_msg = PipeMessage(
                                 source=self.name,
@@ -883,9 +901,12 @@ class LiveEvents(BaseEvents):
                                     'args': arg,
                                 }
                             )
-                            self.state_dict[group_id][idx][vtype]['status'] = 'cleaned'
-                            self._sync_artifact(group_id, vtype, idx + 1,
-                                                state=ArtifactState.CLEANED)
+                            # keep_self 时**不能**把当前 vtype 标成 cleaned，
+                            # 否则状态库会把"仍然保留在本地"的弹幕版记成已清理。
+                            if not keep_self:
+                                self.state_dict[group_id][idx][vtype]['status'] = 'cleaned'
+                                self._sync_artifact(group_id, vtype, idx + 1,
+                                                    state=ArtifactState.CLEANED)
                             ret_msgs.append(clean_msg)
 
         return ret_msgs
