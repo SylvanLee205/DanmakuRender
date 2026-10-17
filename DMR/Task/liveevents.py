@@ -36,6 +36,12 @@ _STATUS_TO_STATE = {
     'uploading': ArtifactState.UPLOADING,
     'uploaded': ArtifactState.UPLOADED,
     'cleaned': ArtifactState.CLEANED,
+    # ⚠️ 2026-10-18 补：之前漏了这个映射，导致命中跳过上传规则的文件
+    #    只改内存状态、不写库。后果：
+    #      1. 每次重启都对同一批文件重新跑 ffprobe 判断（白费 CPU）
+    #      2. 状态库里显示的还是 rendered/recorded，看着像"卡住了"
+    #    映射到 SKIPPED 后，SKIPPED 不在 RESUMABLE_STATES 里 → 重启不再重跑。
+    'upload_skipped': ArtifactState.SKIPPED,
 }
 
 
@@ -672,6 +678,13 @@ class LiveEvents(BaseEvents):
                 # 命中跳过规则 → 标成 upload_skipped（清理流程据此判定"该传的都处理完了"）。
                 # 标记必须在提交上传任务之前，否则状态已被置为 uploading。
                 if self._mark_upload_skipped(video_state, vtype, info, skip_rule):
+                    # ⚠️ 2026-10-18 补：把 upload_skipped 持久化到状态库。
+                    # 原来只改内存，导致每次重启都重新对同一批文件跑 ffprobe
+                    # 判断跳过规则（浪费），而且库里显示 rendered/recorded
+                    # 看起来像"卡住了"。SKIPPED 不在 RESUMABLE_STATES，
+                    # 写进去之后重启就不会再重跑。
+                    self._sync_artifact(group_id, vtype, idx + 1,
+                                        state=ArtifactState.SKIPPED)
                     continue
                 for upload_file_types, upload_arg in upload_args.items():
                     # 判断当前视频是否需要上传
