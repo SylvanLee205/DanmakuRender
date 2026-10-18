@@ -72,6 +72,19 @@ class StreamgearsDownloader():
         with tempfile.TemporaryFile(dir='.temp') as logfile:
         # with open('.temp/test.log', 'wb') as logfile:
             self.streamgears_proc = subprocess.Popen(streamgears_args, stdin=subprocess.PIPE, stdout=logfile, stderr=subprocess.STDOUT)
+
+            # ── 停滞看门狗（2026-10-18 新增）────────────────────────────
+            # 问题：biliup 偶尔会"连着但收不到数据"—— 进程活着、TCP 通、
+            #   CPU 缓慢增长，但 .flv.part 长时间一个字节都不写。
+            #   实测：断尾人类 2026-10-18 20:56 的分段卡在 495.9MB 达 18 分钟，
+            #   同时弹幕 .ass 一直在写（说明直播还在），而 stop_wait_time=120
+            #   意味着程序要等 2 小时才会判下播 —— 这期间全都在丢素材。
+            # 做法：跟踪"最新分段的文件大小"，若 STALL_TIMEOUT 秒内没有任何
+            #   增长就主动抛异常，交给外层的退避重连逻辑重新拉流。
+            # 阈值取 300 秒（5 分钟）：正常直播不会连续 5 分钟一个字节都不写。
+            STALL_TIMEOUT = 300
+            _last_path, _last_size, _last_grow_ts = None, -1, time.time()
+
             while not self.stoped:
                 if self.streamgears_proc.poll() is not None:
                     break
@@ -86,8 +99,33 @@ class StreamgearsDownloader():
                 # 最后一个文件不算在内
                 for p in range(len(files)-1):
                     self.segment_callback(files[p])
+
+                # ── 停滞判定 ──
+                if files:
+                    cur = files[-1]
+                    try:
+                        size = os.path.getsize(cur)
+                    except OSError:
+                        size = -1
+                    if cur != _last_path or size > _last_size:
+                        # 换了新分段，或体积有增长 → 视为活跃
+                        _last_path, _last_size, _last_grow_ts = cur, size, time.time()
+                    elif size >= 0 and time.time() - _last_grow_ts > STALL_TIMEOUT:
+                        logfile.seek(0)
+                        _tail = logfile.read().decode('utf8', errors='ignore')[-600:]
+                        # 先停掉子进程，避免它和新一轮录制同时写文件
+                        try:
+                            self.stoped = True
+                            self.streamgears_proc.kill()
+                        except Exception:
+                            pass
+                        raise RuntimeError(
+                            f'{self.taskname} 录制停滞：分段 {os.path.basename(cur)} '
+                            f'在 {STALL_TIMEOUT} 秒内没有任何增长（停在 {size} 字节），'
+                            f'判定为"假连接"，主动重连。biliup 输出尾部:\n{_tail}')
+
                 time.sleep(10)
-            
+
             if not self.stoped and Onair(self.url):
                 logfile.seek(0)
                 log = logfile.read().decode('utf8', errors='ignore')
