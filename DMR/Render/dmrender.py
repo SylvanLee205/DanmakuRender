@@ -22,6 +22,8 @@ class DmRender(BaseRender):
                  gop_multiplier=None,
                  gop_default_fps: float = 30,
                  ffmpeg: str = None,
+                 fallback_vencoder: str = 'libx265',
+                 fallback_vencoder_args: list = None,
                  debug=False,
                  **kwargs
                  ):
@@ -38,12 +40,31 @@ class DmRender(BaseRender):
         # None/0/False/'off' 时不干预，交给编码器默认；'auto' 等价于 8。
         self.gop_multiplier = self._parse_gop_multiplier(gop_multiplier)
         self.gop_default_fps = float(gop_default_fps or 30)
+        # ── 硬件编码失败时的软件编码降级（2026-10-18 新增）──────────────
+        # 起因：用户在后台跑双路批量渲染（都占 QSV），DMR 的 hevc_qsv 渲染
+        # 在 33:47 报 Invalid FrameType:0 / -1094995529 直接失败，留下残缺产物。
+        # 实测：同样的文件在 GPU 空闲时 4 种编码方案全部成功 —— 这是**资源争抢**，
+        # 不是素材损坏。
+        # 做法：硬件编码器（*_qsv / *_nvenc / *_vaapi / *_amf）渲染失败时，
+        # 自动用软件编码器重试一次。正常情况下仍走硬件（快 2 倍+）。
+        # 设为 None 或空串可关闭降级。
+        self.fallback_vencoder = (fallback_vencoder or '').strip() or None
+        if fallback_vencoder_args is None:
+            # libx265 的质量参数：-crf 30 与 QSV 的 -global_quality 30 观感接近
+            fallback_vencoder_args = ['-preset', 'veryfast', '-crf', '30', '-tag:v', 'hvc1']
+        self.fallback_vencoder_args = list(fallback_vencoder_args)
         self.ffmpeg = ffmpeg if ffmpeg else ToolsList.get('ffmpeg')
         self.debug = debug
 
         self.logger = logging.getLogger(__name__)
         self._check_encoder_args()
         self.raw_ffmpeg = RawFFmpegRender(debug=self.debug)
+
+    #: 这些后缀的编码器属于硬件加速，可能因为会话被占用而失败
+    _HW_ENCODER_MARKS = ('_qsv', '_nvenc', '_vaapi', '_amf', '_videotoolbox')
+
+    def _is_hw_encoder(self, name: str) -> bool:
+        return bool(name) and any(m in str(name).lower() for m in self._HW_ENCODER_MARKS)
 
     _QUALITY_ARGS = ('-global_quality', '-qp', '-qscale', '-crf', '-cq', '-qmin', '-qmax')
 
@@ -161,7 +182,16 @@ class DmRender(BaseRender):
         except OSError as e:
             self.logger.debug(f'清理临时弹幕文件 {path} 失败: {e}')
 
-    def render_helper(self, video: str, danmaku: str, output: str, to_stdout: bool = False, logfile=None):
+    def render_helper(self, video: str, danmaku: str, output: str, to_stdout: bool = False, logfile=None,
+                      vencoder: str = None, vencoder_args: list = None):
+        """渲染单个视频。
+
+        ``vencoder`` / ``vencoder_args`` 为空时用实例配置；
+        软件编码降级时会显式传入替代编码器（见 ``_try_software_fallback``）。
+        """
+        vencoder = vencoder or self.vencoder
+        vencoder_args = list(vencoder_args) if vencoder_args is not None else self.vencoder_args
+
         ffmpeg_args = [self.ffmpeg, '-y']
         ffmpeg_args += self.hwaccel_args
 
@@ -197,14 +227,14 @@ class DmRender(BaseRender):
             '-i', video,
             filter_name, filter_str,
 
-            '-c:v', self.vencoder,
+            '-c:v', vencoder,
             # GOP（关键帧间隔）自动设置：gop_multiplier = N 时 -g = round(源帧率 × N)。
             # ⚠️ 2026-10-15 复查发现：合并上游时这个调用点漏了，
             #    导致 gop_multiplier=8 的配置**完全没生效**（方法定义了但没人调）。
             #    放在 -c:v 之后、用户 vencoder_args 之前 —— 这样若用户在
             #    vencoder_args 里自己写了 -g，会覆盖我们的值（符合预期）。
             *self._build_gop_args(video),
-            *self.vencoder_args,
+            *vencoder_args,
             '-c:a', self.aencoder,
             *self.aencoder_args,
             *scale_args,
@@ -230,6 +260,34 @@ class DmRender(BaseRender):
         start_time = datetime.now()
         try:
             status, info = self.render_helper(video.path, danmaku, output, **kwargs)
+
+            # ── 硬件编码失败 → 软件编码降级重试一次（2026-10-18 新增）──────
+            # 起因：用户在后台跑双路批量渲染（都占 QSV），DMR 的 hevc_qsv
+            # 渲染在 33:47 报 Invalid FrameType:0 / -1094995529 直接失败，
+            # 留下 27%~56% 的残缺产物。
+            # 实测：同一文件在 GPU 空闲时 4 种编码方案（含 qsv）全部成功，
+            # 说明这是**GPU 编码会话争抢**，不是素材损坏。
+            # 处理：换软件编码器再试一次。只重试一次，不会循环。
+            if (not status and self.fallback_vencoder
+                    and self._is_hw_encoder(self.vencoder)
+                    and self.fallback_vencoder != self.vencoder):
+                self.logger.warning(
+                    f'硬件编码器 {self.vencoder} 渲染失败，改用软件编码器 '
+                    f'{self.fallback_vencoder} 重试一次。\n'
+                    f'  常见原因：GPU 编码会话被其他程序占用'
+                    f'（别的渲染任务、录屏、转码脚本等）。\n'
+                    f'  原始错误尾部: {str(info)[-400:]}')
+                # 清掉失败留下的残缺产物，避免 ffmpeg 因为文件已存在而拒绝
+                self._remove_quietly(output)
+                status, info = self.render_helper(
+                    video.path, danmaku, output,
+                    vencoder=self.fallback_vencoder,
+                    vencoder_args=self.fallback_vencoder_args,
+                    **kwargs)
+                if status:
+                    self.logger.info(
+                        f'软件编码降级成功（{self.fallback_vencoder}）。'
+                        f'建议排查是什么占用了 GPU，否则每次渲染都要多花一倍时间。')
         finally:
             # 必须等 ffmpeg 渲染结束才能删：subtitles 滤镜是在渲染期间读这个文件的
             self._remove_quietly(temp_danmaku)
