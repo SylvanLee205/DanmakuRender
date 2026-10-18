@@ -309,6 +309,17 @@ render_args:
     # 输出重缩放，会把输出重缩放到指定分辨率，可以设置为'WxH'直接指定输出分辨率，例如'3840x2160'（4K）
     # 也可以指定为当前视频的大小倍数，例如'1.5'，这样1080P视频将会被放大到2880x1620（这个也符合了B站的4K视频标准）
     output_resize: ~
+    # ── 硬件编码失败时的处理（2026-10-18 魔改版新增）──────────────
+    # 硬件编码器（*_qsv/_nvenc/_vaapi/_amf）失败时，先用硬件重试，
+    # 全部失败才降级到软件编码器。0 = 不重试，直接降级。
+    hw_retry: 2
+    # 每次硬件重试前等待秒数（给占用 GPU 的程序让路）
+    hw_retry_delay: 60
+    # 降级用的软件编码器，置空(~)则不降级（libx265 / libx264）
+    fallback_vencoder: libx265
+    # 软件编码器参数。实测（60 秒 720x1280 素材）：
+    #   QSV gq30 7.0MB/958kbps/12.7s vs veryfast crf28 7.7MB/1053kbps/22.3s
+    fallback_vencoder_args: ['-preset', 'veryfast', '-crf', '28', '-tag:v', 'hvc1']
     # 高质量大文件「跳过上传」规则（魔改版新增，详细说明见 configs/global.yml）
     # 命中就跳过上传，但不影响本地文件（原视频照删，弹幕版留存）
     skip_upload_rule:

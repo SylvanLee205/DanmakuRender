@@ -3,6 +3,7 @@ import logging
 import os
 import platform
 import tempfile
+import time
 
 from .baserender import BaseRender
 from .ffmpeg import RawFFmpegRender
@@ -24,6 +25,8 @@ class DmRender(BaseRender):
                  ffmpeg: str = None,
                  fallback_vencoder: str = 'libx265',
                  fallback_vencoder_args: list = None,
+                 hw_retry: int = 2,
+                 hw_retry_delay: float = 60,
                  debug=False,
                  **kwargs
                  ):
@@ -50,9 +53,16 @@ class DmRender(BaseRender):
         # 设为 None 或空串可关闭降级。
         self.fallback_vencoder = (fallback_vencoder or '').strip() or None
         if fallback_vencoder_args is None:
-            # libx265 的质量参数：-crf 30 与 QSV 的 -global_quality 30 观感接近
-            fallback_vencoder_args = ['-preset', 'veryfast', '-crf', '30', '-tag:v', 'hvc1']
+            # 实测对比（60 秒片段，同一素材）：
+            #   QSV medium gq30      7.0 MB / 958 kbps / 12.7s   ← 当前配置
+            #   libx265 veryfast crf28  7.7 MB / 1053 kbps / 22.3s (1.8x)
+            #   libx265 medium  crf30   6.4 MB /  879 kbps / 36.4s (2.9x)
+            # 取 veryfast+crf28：体积只比硬件大 10%，速度只慢 1.8 倍。
+            fallback_vencoder_args = ['-preset', 'veryfast', '-crf', '28', '-tag:v', 'hvc1']
         self.fallback_vencoder_args = list(fallback_vencoder_args)
+        # 硬件编码重试（用户要求：尽量硬解硬编，实在不行再软编码）
+        self.hw_retry = max(0, int(hw_retry or 0))
+        self.hw_retry_delay = max(0.0, float(hw_retry_delay or 0))
         self.ffmpeg = ffmpeg if ffmpeg else ToolsList.get('ffmpeg')
         self.debug = debug
 
@@ -261,22 +271,46 @@ class DmRender(BaseRender):
         try:
             status, info = self.render_helper(video.path, danmaku, output, **kwargs)
 
-            # ── 硬件编码失败 → 软件编码降级重试一次（2026-10-18 新增）──────
+            # ── 硬件编码重试 + 最后才降级软件（2026-10-18 新增）────────────
             # 起因：用户在后台跑双路批量渲染（都占 QSV），DMR 的 hevc_qsv
-            # 渲染在 33:47 报 Invalid FrameType:0 / -1094995529 直接失败，
-            # 留下 27%~56% 的残缺产物。
-            # 实测：同一文件在 GPU 空闲时 4 种编码方案（含 qsv）全部成功，
-            # 说明这是**GPU 编码会话争抢**，不是素材损坏。
-            # 处理：换软件编码器再试一次。只重试一次，不会循环。
+            # 渲染报 Invalid FrameType:0 / -1094995529 并留下残缺产物。
+            # 实测：GPU 空闲时 4 种编码方案（含纯 qsv）全部成功；而且同一晚
+            # 23:08 在两个批量进程都在跑的情况下，DMR 的 QSV 渲染又成功了
+            # —— 说明这不是"会话数硬上限"，而是**间歇性**的资源争抢。
+            #
+            # 所以策略是「硬件优先」：
+            #   1. 硬件编码失败 → 等 hw_retry_delay 秒后**再用硬件重试**，
+            #      最多 hw_retry 次（默认 2 次）—— 间歇性争抢往往重试就过
+            #   2. 全部硬件尝试都失败 → 才降级到软件编码（libx265），只降一次
+            # 用户明确要求：尽量硬解硬编，实在不行再软编码。
+            if (not status and self._is_hw_encoder(self.vencoder)
+                    and self.hw_retry > 0):
+                for attempt in range(1, self.hw_retry + 1):
+                    self.logger.warning(
+                        f'硬件编码器 {self.vencoder} 渲染失败（第 {attempt}/'
+                        f'{self.hw_retry} 次重试），{self.hw_retry_delay} 秒后'
+                        f'再用硬件重试。\n'
+                        f'  常见原因：GPU 编码会话被其他程序占用'
+                        f'（别的渲染任务、录屏、转码脚本等）。\n'
+                        f'  错误尾部: {str(info)[-300:]}')
+                    self._remove_quietly(output)
+                    time.sleep(self.hw_retry_delay)
+                    status, info = self.render_helper(
+                        video.path, danmaku, output, **kwargs)
+                    if status:
+                        self.logger.info(
+                            f'硬件编码第 {attempt} 次重试成功（{self.vencoder}）。')
+                        break
+
+            # 硬件彻底不行 → 软件编码兜底（只降级一次）
             if (not status and self.fallback_vencoder
                     and self._is_hw_encoder(self.vencoder)
                     and self.fallback_vencoder != self.vencoder):
                 self.logger.warning(
-                    f'硬件编码器 {self.vencoder} 渲染失败，改用软件编码器 '
-                    f'{self.fallback_vencoder} 重试一次。\n'
-                    f'  常见原因：GPU 编码会话被其他程序占用'
-                    f'（别的渲染任务、录屏、转码脚本等）。\n'
-                    f'  原始错误尾部: {str(info)[-400:]}')
+                    f'硬件编码器 {self.vencoder} 重试 {self.hw_retry} 次仍失败，'
+                    f'降级到软件编码器 {self.fallback_vencoder}。\n'
+                    f'  软件编码会明显更慢，建议排查是什么长期占用 GPU。\n'
+                    f'  错误尾部: {str(info)[-300:]}')
                 # 清掉失败留下的残缺产物，避免 ffmpeg 因为文件已存在而拒绝
                 self._remove_quietly(output)
                 status, info = self.render_helper(
