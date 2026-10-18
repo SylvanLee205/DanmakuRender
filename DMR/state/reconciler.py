@@ -38,7 +38,7 @@ import time
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from .enums import ArtifactState
+from .enums import ArtifactKind, ArtifactState
 from .repository import ArtifactRecord, SessionRecord, StateRepository
 
 logger = logging.getLogger(__name__)
@@ -373,6 +373,24 @@ class RecoveryManager:
             # A5/A6：稳定态只看正式路径是否存在
             if state in (ArtifactState.PLANNED,):
                 continue
+
+            # ⚠️⚠️ 例外（2026-10-18 修复）：dm_video 在 RECORDED 状态时，
+            # 文件**本来就不存在** —— 这是"已登记、尚未渲染"的正常状态，
+            # 不是丢失。
+            #
+            # 原实现会把它判成 MISSING，导致一个严重后果：
+            #   渲染失败（或产物被删）后重启 → dm_video 被标 missing →
+            #   MISSING 不在 RESUMABLE_STATES 里 → **永远不会再被渲染**。
+            # 实测事故：断尾人类 2026-10-18 22:52 的分段渲染失败（QSV 争抢），
+            # 重启后 dm_video 被标 missing，恢复流程"已重新派发 0 个任务"，
+            # 那一段就永久没有弹幕版了。
+            #
+            # src_video 在 RECORDED 时文件必须存在（源丢了才是真问题），
+            # 所以只对 dm_video 放行。
+            if (artifact.kind is ArtifactKind.DANMAKU_VIDEO
+                    and state is ArtifactState.RECORDED):
+                continue
+
             if self._exists(artifact.path):
                 continue
             self.repo.set_artifact_state(
