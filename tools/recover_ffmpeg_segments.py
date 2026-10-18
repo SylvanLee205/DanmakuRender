@@ -242,8 +242,16 @@ def scan(cfg, replay_dir=None, min_age_minutes=DEFAULT_MIN_AGE_MINUTES,
         final = render_final_name(tmpl, task, dt) if tmpl else None
         if not final:
             final = dt.strftime('%Y年%m月%d日%H点%M分')
+        _idx = int(m.group('idx'))
         dst = join(dirname(p), final + '.' + m.group('ext'))
-        # 目标已存在则不覆盖（避免吃掉已有分段）
+        # ⚠️ 2026-10-19：同一场的 Part001/002 会和 Part000 重名。
+        #    （实测：微哭不嗧嗧 03:39 场的 Part001 就因为目标已存在被跳过，
+        #     1.3 GB 真实录制内容差点永远卡在 [正在录制] 名下）
+        #    Part000 用原名，后续分段追加 -PartNNN 后缀。
+        if _idx > 0:
+            _cand = join(dirname(p), final + f'-Part{_idx:03d}' + '.' + m.group('ext'))
+            if exists(dst) and not exists(_cand):
+                dst = _cand
         if exists(dst):
             L(f'  跳过（目标已存在）: {basename(dst)}')
             continue
