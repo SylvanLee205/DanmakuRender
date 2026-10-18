@@ -263,6 +263,42 @@ class DmRender(BaseRender):
             output_info.ctime = start_time
             output_info.dm_file_id = None
             output_info.src_video_id = video.file_id
+
+            # ── 时长一致性校验（2026-10-18 新增）──────────────────────────
+            # 起因：断尾人类 2026-10-18 19:56 的分段，源视频 3791.6 秒、
+            # 但渲染产物只有 2027.3 秒（53%）—— 因为源流在中途时间戳损坏，
+            # hevc_qsv 遇到坏帧直接放弃（Invalid FrameType:0 / -1094995529）。
+            # ffmpeg 退出码非 0 时上游会上报失败，但**产物已经留在磁盘上**，
+            # 体积有 270MB，逃过了"0 字节保险闸"，看起来像个正常产物。
+            # 严重性：下游会上传这个残缺视频，且清理规则会删掉源视频 ——
+            # 那一段录播就永久变成残缺品了。
+            #
+            # 这里比较"产物时长 vs 源视频时长"，短太多就判定为失败。
+            # 阈值取 90%：正常渲染的时长误差在 1% 以内（弹幕不影响时长），
+            # 90% 足够宽松，不会误杀正常的结尾裁剪。
+            # 任何异常都只记日志、不影响原有判定（fail-open）。
+            try:
+                src_dur = float(getattr(video, 'duration', 0) or 0)
+                if src_dur <= 0:
+                    # VideoInfo 没带时长时，从文件本身取
+                    src_dur = float(FFprobe.get_duration(video.path) or 0)
+                out_dur = float(FFprobe.get_duration(output) or 0)
+                if src_dur > 0 and out_dur > 0:
+                    ratio = out_dur / src_dur
+                    if ratio < 0.90:
+                        try:
+                            os.remove(output)
+                        except Exception as e:
+                            self.logger.warning(f'删除残缺产物失败 {output}: {e}')
+                        return False, (
+                            f'渲染产物时长异常：源 {src_dur:.0f} 秒 → 产物仅 '
+                            f'{out_dur:.0f} 秒（{ratio*100:.0f}%），已删除（源视频保留）。\n'
+                            f'通常是**源视频本身损坏**（录制期间流时间戳错乱），'
+                            f'导致编码器中途放弃。ffmpeg 输出尾部:\n'
+                            f'{str(info)[-800:]}')
+            except Exception as e:
+                self.logger.debug(f'时长校验跳过（不影响渲染结果）: {e}')
+
             return status, output_info
         else:
             return status, info

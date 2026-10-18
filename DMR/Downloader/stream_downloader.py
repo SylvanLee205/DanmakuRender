@@ -227,16 +227,35 @@ class StreamDownloadTask():
         """
         import threading
 
+        # ⚠️ 2026-10-18 调整：
+        #   · 超时 3 分钟 → 5 分钟（实测有主播开播后前几分钟写入极慢，
+        #     3 分钟内文件到不了 200KB，导致日志频繁出现"未能在3分钟内探测到"）
+        #   · 候选文件只挑**视频后缀** —— 原实现用 taskname-* 通配，
+        #     会把 .ass 弹幕文件也当成候选；弹幕文件在热门房间几十秒就能
+        #     超过 200KB，ffprobe 对它必然失败，等于每轮都在做无用功。
+        PROBE_TIMEOUT = 300
+        PROBE_MIN_BYTES = 200 * 1024
+        VIDEO_EXTS = ('.flv.part', '.flv', '.mkv', '.mp4', '.ts.part', '.ts')
+
+        def _video_candidates():
+            pat = join(self.output_dir, f'[正在录制]{self.taskname}-*')
+            out = []
+            for f in glob.glob(pat):
+                if not f.lower().endswith(VIDEO_EXTS):
+                    continue
+                try:
+                    if os.path.getsize(f) > PROBE_MIN_BYTES:
+                        out.append(f)
+                except OSError:
+                    continue
+            return sorted(out)
+
         def _worker():
-            deadline = time.time() + 180      # 最多等 3 分钟
+            deadline = time.time() + PROBE_TIMEOUT
             probed = False
             while time.time() < deadline and not getattr(self, 'stoped', False):
                 try:
-                    pat = join(self.output_dir,
-                               f'[正在录制]{self.taskname}-*')
-                    files = sorted(glob.glob(pat))
-                    # 挑体积足够的（太小的文件可能还没写入关键帧信息）
-                    cand = [f for f in files if os.path.getsize(f) > 200 * 1024]
+                    cand = _video_candidates()
                     if cand:
                         # 注意：get_resolution 没有 fallback 参数，失败时返回 (0, 0)
                         w, h = FFprobe.get_resolution(cand[-1])
@@ -256,8 +275,8 @@ class StreamDownloadTask():
                 time.sleep(3)
             if not probed:
                 self.logger.debug(
-                    f'{self.taskname}: 未能在 3 分钟内从本地分段探测到分辨率，'
-                    f'继续使用 {self.width}x{self.height}（仅影响弹幕渲染尺寸）。')
+                    f'{self.taskname}: 未能在 {PROBE_TIMEOUT // 60} 分钟内从本地分段'
+                    f'探测到分辨率，继续使用 {self.width}x{self.height}（仅影响弹幕渲染尺寸）。')
 
         threading.Thread(target=_worker, name='resolution-probe',
                          daemon=True).start()
