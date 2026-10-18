@@ -280,7 +280,17 @@ class LiveEvents(BaseEvents):
                 continue
             if dv.get('wait'):
                 continue
-            if not os.path.exists(getattr(video, 'path', '')):
+            _vp = getattr(video, 'path', '') or ''
+            if not os.path.exists(_vp):
+                continue
+            # ⚠️ 2026-10-19（第一版就踩到的坑）：两个必要前提
+            #   1. 「正在录制」的文件不能渲染（还在写，render 会拿到残缺内容）
+            #   2. 必须有存在的弹幕文件，否则 render 会直接报
+            #      「不存在弹幕文件 None，跳过渲染」
+            if os.path.basename(_vp).startswith('['):
+                continue
+            _dm = getattr(video, 'dm_file_id', None)
+            if not _dm or not os.path.exists(_dm):
                 continue
             try:
                 if render_args.get('output_name'):

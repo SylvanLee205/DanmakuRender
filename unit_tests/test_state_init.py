@@ -121,12 +121,27 @@ class TestStateWiring(_WiringTestCase):
 class TestTaskSetConsistency(_WiringTestCase):
     """状态库是单一全局库，配置目录一换就会"任务消失"，必须拒绝启动。"""
 
+    def _add_artifact(self, dmr, state):
+        """给 sess-1 插一条指定状态的产物（用于构造"还有活"的孤儿任务）。"""
+        import time as _t
+        conn = dmr.state_repo.conn
+        conn.execute(
+            'INSERT OR REPLACE INTO artifacts '
+            '(artifact_id, session_id, segment_idx, kind, state, updated_at, data) '
+            'VALUES (?,?,?,?,?,?,?)',
+            ('sess-1:src_video:1', 'sess-1', 1, 'src_video', state,
+             int(_t.time()), '{}'))
+        conn.commit()
+
     def test_missing_task_refuses_to_start(self):
         from DMR import DanmakuRender, StateConsistencyError
 
         config = self.make_config(taskname="test")
         first = self.make_dmr(config)
         first.state_repo.create_session("sess-1", "test")
+        # 2026-10-19：必须留一条**非终态**产物，才算"有价值的历史"而拒绝启动。
+        # （全是终态/没有产物的孤儿任务会被自动清理 —— 见下面的新测试。）
+        self._add_artifact(first, 'recorded')
         first.stop()
 
         # 换一个只有别的任务的配置目录，但复用同一个状态库
@@ -145,6 +160,7 @@ class TestTaskSetConsistency(_WiringTestCase):
         config = self.make_config(taskname="test")
         first = self.make_dmr(config)
         first.state_repo.create_session("sess-1", "test")
+        self._add_artifact(first, 'recorded')
         first.stop()
 
         other = self.make_config(taskname="other", subdir="configs3")
@@ -162,6 +178,30 @@ class TestTaskSetConsistency(_WiringTestCase):
             conn.rollback()
         finally:
             conn.close()
+
+    def test_terminal_only_orphan_is_auto_purged(self):
+        """孤儿任务的产物全是终态时，自动清理并继续启动（不再崩溃循环）。
+
+        2026-10-19 实测事故：临时测试任务验证完删掉配置后，库里残留的已清理记录
+        让程序拒绝启动，进入 12 秒一次的崩溃循环，只能手动删整个 dmr_state.db
+        —— 会连带丢掉所有正常任务的历史。惩罚过重，改为自动清理。
+        """
+        from DMR import DanmakuRender
+
+        config = self.make_config(taskname="test")
+        first = self.make_dmr(config)
+        first.state_repo.create_session("sess-1", "test")
+        self._add_artifact(first, 'cleaned')      # 终态
+        first.stop()
+
+        other = self.make_config(taskname="other", subdir="configs_purge")
+        second = DanmakuRender(other)             # 不应抛 StateConsistencyError
+        try:
+            self.assertIsNotNone(second.state_repo)
+            # 孤儿任务的历史已被清掉
+            self.assertIsNone(second.state_repo.get_session("sess-1"))
+        finally:
+            second.stop()
 
     def test_matching_task_set_starts_normally(self):
         config = self.make_config(taskname="test")

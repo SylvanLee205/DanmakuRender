@@ -106,6 +106,38 @@ class DanmakuRender():
                 '但当前配置未加载任何任务。请检查 --config 指向的全局配置与其中的 '
                 'dmr_engine_args.config_path 是否正确。'
             )
+
+        # ── 2026-10-19：孤儿任务若产物全部已终态，自动清理并继续启动 ──
+        # 起因：临时测试任务验证完删掉配置后，库里残留的已完成记录
+        # 让程序拒绝启动并进入 12 秒一次的崩溃循环，只能手动删库 ——
+        # 那会连带把正常任务的历史一并丢掉，惩罚过重。
+        try:
+            from .state.enums import TERMINAL_ARTIFACT_STATES
+            purged = []
+            for _tn in sorted(missing):
+                _sids = [s.session_id for s in self.state_repo.list_sessions()
+                         if s.taskname == _tn]
+                _states = []
+                for _sid in _sids:
+                    _states += [a.state for a in
+                                self.state_repo.list_artifacts(session_id=_sid)]
+                _non_terminal = [st for st in _states
+                                 if st not in TERMINAL_ARTIFACT_STATES]
+                if _non_terminal:
+                    continue      # 有未完成的，交给下面报错
+                self.state_repo.purge_task(_tn)
+                purged.append(_tn)
+            if purged:
+                self.logger.warning(
+                    f'状态库里的孤儿任务 {purged} 产物已全部终态，'
+                    f'已自动清理它们的历史记录（不影响其它任务）。')
+                missing = missing - set(purged)
+                if not missing:
+                    return
+        except Exception as e:
+            self.logger.debug(f'孤儿任务自动清理跳过（不影响启动）: '
+                              f'{type(e).__name__}: {e}')
+
         raise StateConsistencyError(
             f'状态库 {self.state_db_path} 记录了任务 {sorted(missing)}，'
             f'但当前配置中没有这些任务（当前任务：{sorted(current_tasks)}）。\n'
