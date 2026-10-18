@@ -231,3 +231,28 @@ C/D/E/F 等章节**。该文件未被 git 跟踪且没有备份，无法完整�
 - **错误**：对未被版本控制的重要文档执行"截断重写"，且未先备份。
 - **教训**：整理文档结构应逐段编辑，或先复制副本；对未跟踪文件尤其不能做破坏性重写。
 - **现状**：本次已按会话内实际执行结果重建（内容可靠），但**原始措辞可能已丢失**。
+
+---
+
+## 8. 2026-10-19 全量排查发现的未修复缺陷
+
+完整证据、代码位置与修法建议见 [`复查报告-20261019.md`](复查报告-20261019.md)。按严重度：
+
+| 编号 | 级别 | 缺陷 | 位置 |
+|---|---|---|---|
+| R1 | 🔴 P0 | 延迟清理用进程内 `threading.Timer`，重启即丢；状态已提前写 `cleaned` → 源视频永久残留（已实测 1.35GB 铁证，当前 6.42GB 孤儿） | `Cleaner/__init__.py:71-72` + `liveevents.py:877-879` |
+| R2 | 🔴 P0 | `render/error` / `uploader/error` 仍映射到 `defaultEvent`，`onTaskError` 从未注册 → 失败后 `wait` 不清空、状态不收敛 | `liveevents.py:70,72` |
+| R3 | 🟠 P1 | `_check_for_clean` 只认 `uploaded`，不认 `upload_skipped` → 命中跳过规则的源视频永不清理 | `liveevents.py:849` |
+| R4 | 🟠 P1 | 恢复重驱动只调 `_check_for_upload`，不派发渲染；渲染失败的 `dm_video` 会被标 `skipped` 永不重渲 | `liveevents.py:321-322` |
+| R5 | 🟠 P1 | 状态库段号用 `segment_id`、渲染/上传/清理用列表下标 `idx+1`，消息丢失后错位 | `liveevents.py:832,878,908,959` |
+| R6 | 🟡 P2 | 跳过规则被应用到无上传规则的 `src_video` 槽位（白跑 ffprobe + 状态写成 SKIPPED） | `liveevents.py:672-687` |
+| R7 | 🟡 P2 | ffmpeg 时长解析 `m` 误用下标 `[0]` | `Downloader/ffmpeg.py:208` |
+| R8 | 🟡 P2 | `_check_for_clean(group_id)` 形参被循环变量遮蔽（每次都全表扫描） | `liveevents.py:843-846` |
+| R9 | 🟡 P2 | 渲染仅 1 线程且 ffmpeg `wait()` 无超时，单次卡死会阻塞全部渲染 | `global.yml nrenders:1` + `Render/ffmpeg.py:39` |
+| R10 | ⚪ P3 | `global.yml` 的 `dynamic_config` / `dynamic_config_path` 无人读取 | `Config/__init__.py:52` |
+| R11 | ⚪ P3 | `ReplayTask` 仍要求 `replay/` 前缀，与 engine 的裸任务名路由不一致（潜在） | `replaytask.py:34` |
+| R12 | ⚪ P3 | `_free_state_memory` 的 `final_status` 不含 `uploaded`，`w_dmfile: False` 下分组只能 72h 超时释放 | `liveevents.py:915-920` |
+
+> 改 R1/R3/R5 涉及清理与状态写入，改完必须跑 `tools/test_clean_order.py`、`tools/test_skip_upload_flow.py`
+> 与全量单测（基线 `Ran 437 tests, OK (expected failures=5)`）。
+

@@ -265,6 +265,10 @@ WATCH = [
     '_handle_unusable', '_promote_intermediate_name', '_passes_length_gate',
     '_free_state_memory', '_verify_configs', '_verify_critical_names',
     '_startup_recover', '_ConsoleNoiseFilter',
+    # ⚠️ 2026-10-19 补：这两个是全仓真孤儿（定义了从未被引用），
+    #    之前不在白名单里所以 D 段一直显示“全部通过”——正是它们被漏掉的原因。
+    #    （注：D 段是跨文件不感知的，render_one/resume_recovered 这类由别的文件调用的会误报，所以白名单只放“本文件内应该被引用”的方法。）
+    'onTaskError',
 ]
 _orphans = []
 for _m in sorted(WATCH):
