@@ -103,6 +103,26 @@ def _startup_recover(config, logger, enabled=True, wait=False, min_age_minutes=2
         return None
 
     def _job():
+        # ── 第一步：ffmpeg 引擎遗留的分段（无 .part，需改名接管）──────
+        # ⚠️ 2026-10-18 新增：切到 engine=ffmpeg 后，崩溃/重启会留下
+        # `[正在录制]<主播>-<YYYYMMDD-HHMMSS>-PartNNN.<ts|mkv|mp4>`。
+        # ffmpeg 的 segment 是流式写的，这些文件**本身可用**（TS 尤其如此，
+        # 实测截断到 50% 后 ffprobe 报的时长准确、能完整解码），
+        # 所以不需要像 biliup 的 .part 那样去"修复"，只要改名入库即可。
+        # 必须在 recover_part 之前跑：recover_part 只认 `.part`，认不出这些。
+        try:
+            from tools.recover_ffmpeg_segments import recover_all as _ff_recover
+            _ff = _ff_recover(config, min_age_minutes=min_age_minutes,
+                              apply_changes=True, logger=logger)
+            if _ff.get("scanned"):
+                logger.info(
+                    f"ffmpeg 分段恢复：扫描 {_ff['scanned']} / "
+                    f"成功 {len(_ff['recovered'])} / 失败 {len(_ff['failed'])}"
+                )
+        except Exception as e:
+            logger.warning(f"ffmpeg 分段恢复跳过（不影响正常录制）: "
+                           f"{type(e).__name__}: {e}")
+
         try:
             from tools.recover_part import recover_all
             res = recover_all(cfg=config, min_age_minutes=min_age_minutes,
