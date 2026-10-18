@@ -20,9 +20,9 @@ from DMR.Config import Config
 from DMR.Render.dmrender import DmRender
 from DMR.utils import VideoInfo, StreamerInfo
 
-SRC = r'./直播回放/断尾人类\断尾的人类不会喵-2026年10月18日19点56分.mkv'
-DM = r'./直播回放/断尾人类\断尾的人类不会喵-2026年10月18日19点56分.ass'
-OUT = r'./直播回放/断尾人类（弹幕版）\断尾的人类不会喵-2026年10月18日19点56分（弹幕版）.mp4'
+SRC = r'./直播回放/断尾人类\断尾的人类不会喵-2026年10月18日22点52分.mkv'
+DM = r'./直播回放/断尾人类\断尾的人类不会喵-2026年10月18日22点52分.ass'
+OUT = r'./直播回放/断尾人类（弹幕版）\断尾的人类不会喵-2026年10月18日22点52分（弹幕版）.mp4'
 
 if os.path.exists(OUT):
     print(f'  删除已有输出: {os.path.getsize(OUT)/1024**2:.1f} MB')

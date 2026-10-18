@@ -76,6 +76,38 @@ class DmRender(BaseRender):
     def _is_hw_encoder(self, name: str) -> bool:
         return bool(name) and any(m in str(name).lower() for m in self._HW_ENCODER_MARKS)
 
+    @staticmethod
+    def _danmaku_last_timestamp(ass_path) -> float:
+        """读 .ass 里最后一条 Dialogue 的时间戳（秒），失败返回 0。
+
+        ⚠️ 为什么用它做时长参考（2026-10-18）：
+            抖音的 FLV 流经常有时间戳跳变，导致录制文件的**容器时长被虚报**。
+            实测：断尾人类 22:52 的分段实际只有 38 分钟，
+            但 ffprobe 的 format.duration 报 13065 秒（217 分钟，虚报 5.7 倍）。
+            如果用源容器时长做校验基准，正常的 38 分钟产物会被判成 17.7% 残缺。
+            弹幕是按真实时间写的，最后一条 Dialogue 的时间戳 ≈ 分段真实时长，
+            对本流水线来说是最可靠的参考。
+        """
+        if not ass_path:
+            return 0.0
+        try:
+            last = 0.0
+            pat = re.compile(r'^Dialogue:[^,]*,'
+                             r'(\d+):(\d+):(\d+)\.(\d+)')
+            with open(str(ass_path), 'r', encoding='utf-8', errors='replace') as f:
+                for line in f:
+                    m = pat.match(line)
+                    if not m:
+                        continue
+                    h, mi, sec, cs = (int(m.group(1)), int(m.group(2)),
+                                      int(m.group(3)), int(m.group(4)))
+                    ts = h * 3600 + mi * 60 + sec + cs / 100.0
+                    if ts > last:
+                        last = ts
+            return last
+        except Exception:
+            return 0.0
+
     _QUALITY_ARGS = ('-global_quality', '-qp', '-qscale', '-crf', '-cq', '-qmin', '-qmax')
 
     def _check_encoder_args(self):
@@ -370,10 +402,19 @@ class DmRender(BaseRender):
             # 90% 足够宽松，不会误杀正常的结尾裁剪。
             # 任何异常都只记日志、不影响原有判定（fail-open）。
             try:
-                src_dur = float(getattr(video, 'duration', 0) or 0)
-                if src_dur <= 0:
-                    # VideoInfo 没带时长时，从文件本身取
-                    src_dur = float(FFprobe.get_duration(video.path) or 0)
+                # 参考时长优先级：
+                #   1) 弹幕最后时间戳 —— 最可靠（FLV 容器时长会虚报，见辅助方法注释）
+                #   2) VideoInfo.duration
+                #   3) ffprobe 读源文件
+                ref_dur = self._danmaku_last_timestamp(danmaku)
+                if ref_dur > 0:
+                    src_dur = ref_dur
+                    ref_src = '弹幕最后时间戳'
+                else:
+                    src_dur = float(getattr(video, 'duration', 0) or 0)
+                    if src_dur <= 0:
+                        src_dur = float(FFprobe.get_duration(video.path) or 0)
+                    ref_src = '源文件容器时长'
                 out_dur = float(FFprobe.get_duration(output) or 0)
                 if src_dur > 0 and out_dur > 0:
                     ratio = out_dur / src_dur
@@ -383,7 +424,7 @@ class DmRender(BaseRender):
                         except Exception as e:
                             self.logger.warning(f'删除残缺产物失败 {output}: {e}')
                         return False, (
-                            f'渲染产物时长异常：源 {src_dur:.0f} 秒 → 产物仅 '
+                            f'渲染产物时长异常：{ref_src} {src_dur:.0f} 秒 → 产物仅 '
                             f'{out_dur:.0f} 秒（{ratio*100:.0f}%），已删除（源视频保留）。\n'
                             f'通常是**源视频本身损坏**（录制期间流时间戳错乱），'
                             f'导致编码器中途放弃。ffmpeg 输出尾部:\n'
