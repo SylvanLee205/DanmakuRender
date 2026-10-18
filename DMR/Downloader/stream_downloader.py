@@ -238,7 +238,13 @@ class StreamDownloadTask():
         VIDEO_EXTS = ('.flv.part', '.flv', '.mkv', '.mp4', '.ts.part', '.ts')
 
         def _video_candidates():
-            pat = join(self.output_dir, f'[正在录制]{self.taskname}-*')
+            # ⚠️ 2026-10-19 修复：glob 里 [ ] 是**字符类**语法，
+            #    [正在录制]x-* 会被解释成「匹配 正/在/录/制 中任意一个字符」，
+            #    永远匹配不到字面量 [正在录制]x-...。
+            #    实测后果：这个分辨率探测从加进来就**从未成功过**，
+            #    日志一直打「未能在 N 分钟内探测到分辨率」。
+            #    正解：用 glob.escape() 转义（内部会转成 [[] / []]）。
+            pat = glob.escape(join(self.output_dir, f'[正在录制]{self.taskname}-')) + '*'
             out = []
             for f in glob.glob(pat):
                 if not f.lower().endswith(VIDEO_EXTS):
