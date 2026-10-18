@@ -113,7 +113,8 @@ r = show('A11 0字节产物保险闸', 'DMR/Render/dmrender.py',
 if not r:
     fails += 1
 r2 = show('A11b 上游根治(读ffmpeg退出码)', 'DMR/Render/ffmpeg.py',
-          ['returncode = self.render_proc.wait()'])
+          # 2026-10-19：现在是 wait(timeout=...)，改成匹配前缀
+          ['returncode = self.render_proc.wait('])
 if not r2:
     fails += 1
 
@@ -245,6 +246,15 @@ for _p in _scan:
         if isinstance(_n, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
             # 模块级调用（main.py 里直接调 _verify_configs(...)）
             pass
+        # ⚠️ 2026-10-19 修：之前只统计「调用」（ast.Call），
+        #    但事件表里的接线是**属性引用**：
+        #        'render/error': self.onTaskError,     ← 没有括号！
+        #    所以即使接线正确，这里也会误报成孤儿。
+        #    现在同时收集 self.xxx 属性引用。
+        if isinstance(_n, _ast.Attribute):
+            if (isinstance(_n.value, _ast.Name)
+                    and _n.value.id == 'self'):
+                _called.add(_n.attr)
         if isinstance(_n, _ast.Call):
             _fn = _n.func
             if (isinstance(_fn, _ast.Attribute)

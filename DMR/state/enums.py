@@ -67,6 +67,11 @@ class ArtifactState(StrEnum):
     CLEANED = "cleaned"
     MISSING = "missing"
     SKIPPED = "skipped"
+    # ⚠️ 2026-10-19 新增：渲染/上传失败后的终态。
+    #    之前 onTaskError 会把内存状态置成 'failed'，但 _STATUS_TO_STATE 里
+    #    没有映射 → 写不进状态库；而且 'failed' 不在终态集里，
+    #    分组永远释放不了。现在把它建成正式终态。
+    FAILED = "failed"
 
     # --- 运行中态：随进程死亡而失效，须由第 0 步净化 ---
     RECORDING = "recording"
@@ -94,6 +99,9 @@ TERMINAL_ARTIFACT_STATES: frozenset[ArtifactState] = frozenset({
     ArtifactState.CLEANED,
     ArtifactState.SKIPPED,
     ArtifactState.MISSING,
+    # 2026-10-19：失败也是终态 —— 不自动重试（避免无限循环），
+    # 但分组可以正常释放；需要重试时用 tools 里的重渲染脚本。
+    ArtifactState.FAILED,
 })
 
 #: 这些状态描述"此刻正在进行"，重启后一律不可信（第 0 步的输入）

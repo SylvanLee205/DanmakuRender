@@ -36,7 +36,20 @@ class RawFFmpegRender(BaseRender):
             # "video:" 来猜成功 —— 只要 ffmpeg 打印过 Stream mapping 段再失败，
             # 就被判成成功，0 字节/残缺产物继续往下游走（2026-10-05 的 libopus
             # 事故正是这样把失败渲染当成功，然后清理逻辑删掉了源视频）。
-            returncode = self.render_proc.wait()
+            # ⚠️ 2026-10-19：加超时。渲染卡死（如 QSV 会话被占满后
+            #    彻底不响应）时，max_workers=1 的线程池会被永久占住，
+            #    后续渲染全部排队。这里用 wait(timeout) 保底。
+            #    超时长度取源时长的 10 倍 + 600 秒（正常渲染约 1/6 实时）。
+            try:
+                _timeout = max(600.0, float(getattr(self, "src_duration", 0) or 0) * 10 + 600)
+                returncode = self.render_proc.wait(timeout=_timeout)
+            except subprocess.TimeoutExpired:
+                self.logger.error(f"渲染超过 {_timeout:.0f} 秒未完成，强制终止: {self.render_proc.args[:3]}")
+                try:
+                    self.render_proc.kill()
+                except Exception:
+                    pass
+                returncode = -1
 
             log = ''
             logfile.seek(0)

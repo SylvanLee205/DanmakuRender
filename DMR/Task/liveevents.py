@@ -42,6 +42,9 @@ _STATUS_TO_STATE = {
     #      2. 状态库里显示的还是 rendered/recorded，看着像"卡住了"
     #    映射到 SKIPPED 后，SKIPPED 不在 RESUMABLE_STATES 里 → 重启不再重跑。
     'upload_skipped': ArtifactState.SKIPPED,
+    # 2026-10-19：onTaskError 会把失败槽位置成 'failed'，
+    # 之前没有这个映射 → 状态写不进库 → 重启后又变回 recorded。
+    'failed': ArtifactState.FAILED,
 }
 
 
@@ -67,11 +70,16 @@ class LiveEvents(BaseEvents):
             'downloader/liveend': self.onLiveEnd,
             'downloader/livestop': self.onLiveEnd,
             'render/end': self.onRenderEnd,
-            'render/error': self.defaultEvent,
+            # ⚠️ 2026-10-19 修：这三个之前都指向 defaultEvent，而 onTaskError
+            # 定义了却从未被任何键引用（全仓只出现 1 次）。
+            # 后果：失败时 wait 里的 request_id 永远清不掉 →　
+            # _check_for_clean 的“wait 非空不清理”防线永远挡着，
+            # 且状态永远停在 rendering/uploading。
+            'render/error': self.onTaskError,
             'uploader/end': self.onUploadEnd,
-            'uploader/error': self.defaultEvent,
+            'uploader/error': self.onTaskError,
             'cleaner/end': self.defaultEvent,
-            'cleaner/error': self.defaultEvent,
+            'cleaner/error': self.onTaskError,
             'default': self.defaultEvent,
         }
     
@@ -246,6 +254,76 @@ class LiveEvents(BaseEvents):
 
     # ------------------------------------------------------------------ 恢复重驱动
 
+    def _dispatch_pending_renders(self, group_id) -> list:
+        """给该分组里「已录完但还没有弹幕版」的分段补派渲染任务。
+
+        P1-2（2026-10-19）：``resume_recovered`` 原来只调 ``_check_for_upload``，
+        而 ``src_video`` 没有上传规则 → 「录完待渲染」的分段恢复后
+        什么都不做（实测日志：「已重新派发 0 个任务」）。
+
+        这里复用与 ``onLiveSegment`` 完全相同的命名与路径规则，
+        避免两条路径行为漂移。
+        """
+        msgs = []
+        if not self.config['common_event_args'].get('auto_render'):
+            return msgs
+        render_args = self.config['render_args']['dmrender']
+        for idx, vs in enumerate(list(self.state_dict.get(group_id) or [])):
+            sv = vs.get('src_video') or {}
+            dv = vs.get('dm_video') or {}
+            video = sv.get('file')
+            if video is None or not getattr(video, 'path', None):
+                continue
+            # 已经在流程中或已完成的槽位不重复派
+            if dv.get('status') in ('rendering', 'ready', 'uploading',
+                                    'uploaded', 'upload_skipped', 'failed'):
+                continue
+            if dv.get('wait'):
+                continue
+            if not os.path.exists(getattr(video, 'path', '')):
+                continue
+            try:
+                if render_args.get('output_name'):
+                    filename = replace_keywords(
+                        render_args['output_name'], video,
+                        replace_invalid=True) + f".{render_args.get('format', 'mp4')}"
+                else:
+                    filename = os.path.splitext(os.path.basename(video.path))[0] + \
+                        f"（弹幕版）.{render_args.get('format', 'mp4')}"
+                if render_args.get('output_dir'):
+                    output_dir = render_args.get('output_dir')
+                else:
+                    output_dir = os.path.dirname(video.path) + '（弹幕版）'
+                output = os.path.join(output_dir, filename)
+            except Exception as e:
+                self.logger.warning(f'计算弹幕版输出路径失败，跳过 {video.path}: {e}')
+                continue
+            if os.path.exists(output):
+                continue   # 已有成品，不重渲染
+            render_msg = PipeMessage(
+                source=self.name,
+                target='render',
+                event='newtask',
+                request_id=uuid(),
+                data={
+                    'taskname': self.name,
+                    'mode': 'dmrender',
+                    'video': video,
+                    'output': output,
+                    'args': render_args,
+                }
+            )
+            dv['status'] = 'rendering'
+            dv['wait'] = list(dv.get('wait') or []) + [render_msg.request_id]
+            dv['file'] = output
+            self._sync_artifact(
+                group_id, 'dm_video', self._seg_no(group_id, 'dm_video', idx),
+                path=output, state=ArtifactState.RENDERING,
+                origin=getattr(video, 'dm_file_id', None))
+            msgs.append(render_msg)
+            self.logger.info(f'补派渲染：{os.path.basename(video.path)}')
+        return msgs
+
     def resume_recovered(self, artifacts) -> list:
         """把对账收集出的"已录制/已渲染但未完成处理"的产物**重新送回处理链**。
 
@@ -318,6 +396,9 @@ class LiveEvents(BaseEvents):
             # 也会被触发，与 onLiveEnd 的行为保持一致。
             if self._session_has_ended(group_id):
                 self.ended_dict[group_id] = time.time()
+            # P1-2：先补渲染（录完待渲染的分段），再走上传/清理。
+            # 顺序很重要：渲染完成后 onRenderEnd 会自己去触发上传。
+            messages += self._dispatch_pending_renders(group_id)
             if self.config['common_event_args'].get('auto_upload'):
                 messages += self._check_for_upload(group_id)
 
@@ -488,11 +569,28 @@ class LiveEvents(BaseEvents):
     @staticmethod
     def _blank_segment_state() -> dict:
         """一个分段的内存状态骨架（与 onLiveSegment 的初值一致）。"""
+        # segment_id：状态库用它当主键，而内存里是追加式列表。
+        # 以前写库用 idx+1，一旦 livesegment 消息被丢（热重启/路由失败）
+        # 两者就不再相等，会把第 N 段的产物记到第 1 段头上。
         return {
-            'src_video': {'status': None, 'file': None, 'wait': []},
-            'src_video_pre': {'status': None, 'file': None, 'wait': []},
-            'dm_video': {'status': None, 'file': None, 'wait': []},
+            'src_video': {'status': None, 'file': None, 'wait': [], 'segment_id': None},
+            'src_video_pre': {'status': None, 'file': None, 'wait': [], 'segment_id': None},
+            'dm_video': {'status': None, 'file': None, 'wait': [], 'segment_id': None},
         }
+
+    def _seg_no(self, group_id, vtype, idx):
+        """取该槽位的段号（状态库主键）。
+
+        优先用当初登记的 ``segment_id``（来自 ``VideoInfo.segment_id``）；
+        拿不到时退回 ``idx + 1``（保底不会比原来更差）。
+        """
+        try:
+            sid = (self.state_dict.get(group_id) or [])[idx].get(vtype, {}).get('segment_id')
+            if isinstance(sid, int) and sid > 0:
+                return sid
+        except Exception:
+            pass
+        return idx + 1
 
     def onReady(self, *args, **kwargs):
         return PipeMessage(
@@ -510,6 +608,11 @@ class LiveEvents(BaseEvents):
         self.logger.log(PROGRESS, f'{self.name}: {message.msg}')
         video:VideoInfo = message.data
         video_state = self._blank_segment_state()
+        # P1-3：把真实段号写进内存状态，
+        # 使后续写库用的主键与内存下标解耦（防止丢消息后段号错位）。
+        _sid = getattr(video, 'segment_id', None)
+        for _vs in video_state.values():
+            _vs['segment_id'] = _sid
         if self.state_dict.get(video.group_id):
             self.state_dict[video.group_id].append(video_state)
         else:
@@ -683,7 +786,7 @@ class LiveEvents(BaseEvents):
                     # 判断跳过规则（浪费），而且库里显示 rendered/recorded
                     # 看起来像"卡住了"。SKIPPED 不在 RESUMABLE_STATES，
                     # 写进去之后重启就不会再重跑。
-                    self._sync_artifact(group_id, vtype, idx + 1,
+                    self._sync_artifact(group_id, vtype, self._seg_no(group_id, vtype, idx),
                                         state=ArtifactState.SKIPPED)
                     continue
                 for upload_file_types, upload_arg in upload_args.items():
@@ -718,7 +821,7 @@ class LiveEvents(BaseEvents):
                             # 状态库：登记上传组（上传器成功后会回写 bvid）并把产物标为上传中。
                             # group_key 与上传器使用的键必须一致，否则 bvid 会落到另一个键上。
                             self._sync_upload_group(group_key, arg)
-                            self._sync_artifact(group_id, vtype, idx + 1,
+                            self._sync_artifact(group_id, vtype, self._seg_no(group_id, vtype, idx),
                                                 state=ArtifactState.UPLOADING)
                             ret_msgs.append(upload_msg)
         
@@ -781,7 +884,7 @@ class LiveEvents(BaseEvents):
                             for idx, _ in enumerate(self.state_dict[group_id]):
                                 self.state_dict[group_id][idx][vtype]['status'] = 'uploading'
                                 self.state_dict[group_id][idx][vtype]['wait'].append(upload_msg.request_id)
-                                self._sync_artifact(group_id, vtype, idx + 1,
+                                self._sync_artifact(group_id, vtype, self._seg_no(group_id, vtype, idx),
                                                     state=ArtifactState.UPLOADING)
                             self._sync_upload_group(group_key, arg)
                             ret_msgs.append(upload_msg)
@@ -829,7 +932,7 @@ class LiveEvents(BaseEvents):
                         self.state_dict[video.group_id][idx][vtype]['status'] = 'ready'
                         self.state_dict[video.group_id][idx][vtype]['file'] = video
                         # 渲染/转码完成 → 结果成为该槽位的成品（RENDERED）
-                        self._sync_artifact(video.group_id, vtype, idx + 1,
+                        self._sync_artifact(video.group_id, vtype, self._seg_no(video.group_id, vtype, idx),
                                             path=video,
                                             state=ArtifactState.RENDERED)
         
@@ -843,10 +946,22 @@ class LiveEvents(BaseEvents):
     def _check_for_clean(self, group_id=None):
         ret_msgs = []
         clean_args = self.config['clean_args']
+        # ⚠️ 2026-10-19 修：参数 group_id 下面被循环变量直接覆盖了，
+        #    导致传入的 group_id 完全不生效（总是遍历全部分组）。
+        #    虽然目前所有调用点都是不传参数的，但传入时行为会误导。
+        _only = group_id
         for group_id, video_states in self.state_dict.items():
+            if _only is not None and group_id != _only:
+                continue
             for idx, video_state in enumerate(video_states):
                 for vtype, info in video_state.items():
-                    if info['status'] != 'uploaded':
+                    # ⚠️ 2026-10-19：之前只认 'uploaded'，导致
+                    #   命中跳过上传规则的文件（横屏/高码率，恰恰是最占空间的）
+                    #   永远不会被清理。而 evaluate_upload_skip_rule 的设计
+                    #   语义明确写着“原视频照常清理，弹幕版留存”。
+                    # ⚠️ 但 'failed' 不能认：渲染失败时源视频是**唯一副本**，
+                    #   删了就永远没了（应该保留待人工重渲染）。
+                    if info['status'] not in ('uploaded', 'upload_skipped'):
                         continue
                     for clean_file_types, clean_arg in clean_args.items():
                         # 判断当前视频是否需要清理
@@ -875,13 +990,13 @@ class LiveEvents(BaseEvents):
                                 if video_state['src_video'].get('status') != 'cleaned':
                                     files.append(video_state['src_video']['file'])
                                     self.state_dict[group_id][idx]['src_video']['status'] = 'cleaned'
-                                    self._sync_artifact(group_id, 'src_video', idx + 1,
+                                    self._sync_artifact(group_id, 'src_video', self._seg_no(group_id, 'src_video', idx),
                                                         state=ArtifactState.CLEANED)
                             # 判断是否需要清理源文件（转码前）
                             if vtype == 'src_video' and arg.get('w_srcpre', True) == True and video_state['src_video_pre']['file'] is not None:
                                 files.append(video_state['src_video_pre']['file'])
                                 self.state_dict[group_id][idx]['src_video_pre']['status'] = 'cleaned'
-                                self._sync_artifact(group_id, 'src_video_pre', idx + 1,
+                                self._sync_artifact(group_id, 'src_video_pre', self._seg_no(group_id, 'src_video_pre', idx),
                                                     state=ArtifactState.CLEANED)
 
                             # 没有任何文件要删（例如 keep_self 且无源文件可删）→ 跳过
@@ -905,19 +1020,43 @@ class LiveEvents(BaseEvents):
                             # 否则状态库会把"仍然保留在本地"的弹幕版记成已清理。
                             if not keep_self:
                                 self.state_dict[group_id][idx][vtype]['status'] = 'cleaned'
-                                self._sync_artifact(group_id, vtype, idx + 1,
+                                self._sync_artifact(group_id, vtype, self._seg_no(group_id, vtype, idx),
                                                     state=ArtifactState.CLEANED)
                             ret_msgs.append(clean_msg)
 
         return ret_msgs
     
     def _free_state_memory(self):
+        # ── ⚠️ 2026-10-19 修：之前用**单一** final_status 做判据，
+        #    但 `w_dmfile: False`（弹幕版永久保留）下，
+        #    dm_video 会永远停在 'uploaded'、不会变 'cleaned'，
+        #    于是分组永远达不到 final_status → 只能等 72 小时超时释放。
+        #    现在改成“可接受状态集”：
+        #      · 失败/'upload_skipped' 本来就是终态，无需等待
+        #      · 当清理规则声明了 w_dmfile=False 时，'dm_video 保持 uploaded' 也算完成
         final_status = 'ready'
         if self.config['common_event_args'].get('auto_upload'):
             final_status = 'uploaded'
         if self.config['common_event_args'].get('auto_clean'):
             final_status = 'cleaned'
-        
+
+        ok_status = {final_status, 'failed', 'upload_skipped'}
+        # 弹幕版被要求保留（w_dmfile False）时，'uploaded' 就是它的终点
+        _keep_dm = False
+        try:
+            for _k, _rules in (self.config.get('clean_args') or {}).items():
+                if _k == 'all' or 'dm_video' in str(_k).split('+'):
+                    for _a in (_rules or []):
+                        if isinstance(_a, dict) and _a.get('w_dmfile', True) is False:
+                            _keep_dm = True
+                            break
+                if _keep_dm:
+                    break
+        except Exception:
+            pass
+        if _keep_dm:
+            ok_status.add('uploaded')
+
         for group_id in list(self.ended_dict.keys()):
             # ``ended_dict`` 可能含有 ``state_dict`` 里没有的组：
             # ``onLiveEnd`` 在分组不存在时只记 debug 而没有写入 ``ended_dict``，
@@ -929,7 +1068,7 @@ class LiveEvents(BaseEvents):
             need_free = True
             for idx, video_state in enumerate(self.state_dict[group_id]):
                 for vtype, info in video_state.items():
-                    if info['status'] is not None and info['status'] != final_status:
+                    if info['status'] is not None and info['status'] not in ok_status:
                         need_free = False
                         break
                 if not need_free: break
@@ -956,7 +1095,7 @@ class LiveEvents(BaseEvents):
                         if len(self.state_dict[group_id][idx][vtype]['wait']) == 0:
                             self.state_dict[group_id][idx][vtype]['status'] = 'uploaded'
                             # 全部待处理请求都结束了 → 该产物确实已进稿件
-                            self._sync_artifact(group_id, vtype, idx + 1,
+                            self._sync_artifact(group_id, vtype, self._seg_no(group_id, vtype, idx),
                                                 state=ArtifactState.UPLOADED)
         
         ret_msgs = []
