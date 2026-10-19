@@ -45,7 +45,8 @@ F:\DanmakuRender-2026.01.10\Start_Render.bat 里写的是  cd "F:\123Pan_Danmaku
 
 | 位置 | 作用 | 状态 |
 |---|---|---|
-| **`Install_Boot_Task.bat`** | 建「开机启动」计划任务（Administrator + 密码），**不占 console、不需要登录** | ★ 最强保险，需双击一次并输入密码 |
+| `Install_Boot_Task.bat` | 建「开机启动」计划任务（Administrator + 密码） | ★ 保险：不依赖登录 |
+| **`Fix_Boot_Task.bat`** | 修掉任务的 **72 小时执行上限**（`schtasks` 默认 PT72H，到期会停任务并杀掉 DMR） | ⚠️ 装完任务必须跑一次 |
 | `Remove_Boot_Task.bat` | 删除上面那个计划任务 | 回滚用 |
 | **`Fix_RDP_Lockout.bat`** | 万一 RDP 又被拒：关掉自动登录并打印 `logoff 1` 指令 | 桌面有同名入口 |
 | Startup\`DanmakuRender_AutoUp.cmd` | 登录后自启（调 `tools\autostart_launch.py`，带 3 次重试） | 兜底；已装计划任务时会被守卫跳过 |
@@ -74,6 +75,26 @@ HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon
 
 > ⚠️ 如果把 `fSingleSessionPerUser` 改成 0，普通 RDP 会**新建独立会话**（看不到 console 里的 DMR 窗口），
 > 只有 `/admin` 才连 console。想保持"随便怎么连都落到同一个桌面"，就保持 1。
+
+### 开机任务的行为：先等人，等不到才自己起
+
+`Run_DMR.bat` 用 `--boot-fallback 180`：
+
+```
+开机 → 任务启动 → 等最多 180 秒看有没有人登录
+        ├─ 有人登录（自动登录正常）→ 任务退出，交给登录自启
+        │     → DMR 跑在**用户会话**里，桌面上能看到控制台窗口（老样子）
+        └─ 180 秒没人登录 → 任务自己起 DMR（session 0，无窗口）→ 录像不停
+```
+
+这样"可靠"和"看得见"同时成立。每一步都写 `logs\autostart.log`。
+
+**为什么必须跑 `Fix_Boot_Task.bat`**：`schtasks /create` 默认给任务 `PT72H` 的执行上限，
+任务跑满 3 天会被系统**强制停止**，而它是前台阻塞跑 DMR 的 —— DMR 会跟着死。
+`Set-ScheduledTask -Settings` 改不了带密码的任务（报 0x8007052e），所以那个脚本会
+重新注册一次任务并让你输一遍密码，把上限改成 `PT0S`（无限制）。自检第 7 段会显示
+`执行时限: PT72H ⚠️` 或 `无限制 ✅`。
+
 
 
 

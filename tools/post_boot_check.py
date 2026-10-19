@@ -207,6 +207,15 @@ def main():
             print(f'    错过次数: {missed}')
             if code == '2':
                 problems.append('开机任务上次以退出码 2 结束 —— 看 logs/startup_error.log')
+            # 默认 schtasks 建出来是 PT72H：3 天后任务被停掉，DMR 会被一起杀
+            limit = ps("(Get-ScheduledTask -TaskName 'DanmakuRender_Boot')."
+                       "Settings.ExecutionTimeLimit")
+            limit = (limit or '').strip()
+            if limit and limit.upper() != 'PT0S':
+                print(f'    执行时限: {limit}  ⚠️ 到期会被系统停掉（双击 DMR-修复开机任务.bat）')
+                problems.append(f'开机任务带执行时限 {limit}，到期会杀掉 DMR')
+            else:
+                print('    执行时限: 无限制 ✅')
 
     # 结论
     head('结论')
