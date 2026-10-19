@@ -187,6 +187,29 @@ class TestGroupADiskCheck(_RecoveryTestCase):
         self.assertFalse(os.path.exists(part), "discard 策略应删除 .part")
         self.assertEqual([a.reason for a in report.interrupted], ["discarded"])
 
+    def test_a1_keep_promotes_danmaku_sidecar_too(self):
+        """转正时必须把弹幕文件一起改名并写进 danmaku_path。
+
+        2026-10-19 实测：只转正视频的话 danmaku_path 一直是 null，
+        下游 _dispatch_pending_renders 要求"必须有弹幕文件"才派发渲染，
+        于是这段视频永远停在 recorded —— 录到了，却没有弹幕版，还不报错。
+        """
+        self.make_session()
+        part = self.write("seg.ts", size_mb=10)
+        part_ass = self.write("seg.ass", size_mb=0.01)
+        self.make_artifact(ArtifactState.RECORDING,
+                           path=self.path("seg（弹幕版）.ts"), part_path=part)
+
+        self.manager(on_interrupted_file=InterruptedFileAction.KEEP).reconcile()
+
+        artifact = self.repo.get_artifact("a1")
+        self.assertEqual(artifact.state, ArtifactState.RECORDED)
+        final_ass = self.path("seg（弹幕版）.ass")
+        self.assertTrue(os.path.exists(final_ass), "弹幕文件应一起转正")
+        self.assertFalse(os.path.exists(part_ass), "旧的中间名弹幕文件应已改名")
+        self.assertEqual(artifact.danmaku_path, final_ass,
+                         "danmaku_path 必须写上，否则这段不会派发渲染")
+
     def test_a2_part_too_small_always_discarded(self):
         """校验失败时即便策略是 keep 也不能转正。"""
         self.make_session()
