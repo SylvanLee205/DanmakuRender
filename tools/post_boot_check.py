@@ -162,6 +162,26 @@ def main():
     except Exception as e:
         print(f'  （读取失败: {type(e).__name__}: {e}）')
 
+    # 7. 开机计划任务 + 自动登录状态
+    head('7. 开机自启方式')
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                            r'SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon') as k:
+            auto = winreg.QueryValueEx(k, 'AutoAdminLogon')[0]
+    except Exception:
+        auto = '?'
+    print(f'  AutoAdminLogon = {auto}'
+          + ('（已关：重启后不会自动登录，必须靠计划任务）' if str(auto) == '0' else ''))
+    state = ps("try { (Get-ScheduledTask -TaskName 'DanmakuRender_Boot' "
+               "-ErrorAction Stop).State } catch { 'NOT_FOUND' }")
+    if 'NOT_FOUND' in state or not state:
+        print('  开机任务 DanmakuRender_Boot: ❌ 未安装')
+        if str(auto) == '0':
+            problems.append('自动登录已关且没有开机任务 —— 重启后 DMR 不会自己起来')
+    else:
+        print(f'  开机任务 DanmakuRender_Boot: ✅ {state}')
+
     # 结论
     head('结论')
     if problems:
