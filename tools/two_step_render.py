@@ -16,7 +16,9 @@ import time
 
 os.chdir(r'F:\DanmakuRender_AutoUp')
 
-STEM = '哭哭不嘻嘻-2026年10月19日03点39分'
+# 可从命令行传入 STEM（不传就用默认的那个）
+STEM = (sys.argv[1] if len(sys.argv) > 1
+        else '哭哭不嘻嘻-2026年10月19日03点39分')
 SRC = f'直播回放/哭哭不嘻嘻/{STEM}.ts'
 ASS = f'./直播回放/哭哭不嘻嘻/{STEM}.ass'
 TMP = '.temp/_step1_clean.mp4'
