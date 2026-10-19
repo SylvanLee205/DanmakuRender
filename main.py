@@ -478,6 +478,21 @@ if __name__ == '__main__':
                              '仅在排查管道问题时才需要。')
     args = parser.parse_args()
 
+    # ── 单实例锁（防跨会话双开，2026-10-19）─────────────────────────
+    # 能拉起 DMR 的入口有三个：开机任务（session 0）、登录自启（session 1）、
+    # 手动双击。三者的进程检查之间有几秒空档，同时通过就会起两个 DMR，
+    # 而两个实例共用同一份状态库和录制目录，会互相覆盖产物状态。
+    # 详见 DMR/utils/instance_lock.py（Windows 命名互斥体，进程退出自动释放）。
+    # 任何异常都 fail-open：无人值守机器上"能起来"优先。
+    if not args.version:
+        from DMR.utils.instance_lock import acquire as _acquire_instance_lock
+        if _acquire_instance_lock() == 'busy':
+            _busy_msg = ('已有 DanmakuRender 实例在运行，本次启动退出。\n'
+                         '两个实例会用同一份状态库和录制目录，互相覆盖产物状态。\n'
+                         '确实要再起一个（例如换了 --config），先停掉正在跑的那个。')
+            print(_busy_msg)
+            sys.exit(3)
+
     # 控制台日志级别
     #   默认 / --quiet      -> INFO（推荐：主播加载、开播、下播都能看到）
     #   --quiet=progress    -> PROGRESS（只留关键进度 + 警告错误）

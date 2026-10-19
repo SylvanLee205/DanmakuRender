@@ -101,8 +101,8 @@ class DmRender(BaseRender):
         """把失败原因翻译成一句人话，避免一律归咎于"GPU 被占用"。"""
         text = str(info or '').lower()
         if DmRender._is_framerate_error(info):
-            return ('源视频没有可用帧率（r_frame_rate=0/0），编码器直接拒绝启动；'
-                    '这类错误重试无用，补 -r 才能继续用硬件。')
+            return ('编码器收到的帧率不是有效值（0/1，或 SPS 里声明的假帧率），'
+                    'QSV 直接拒绝初始化；这类错误重试无用，补 -r 才能继续用硬件。')
         if 'not supported by the qsv runtime' in text:
             return '编码参数不被 QSV 接受（帧率/分辨率/像素格式异常）。'
         if 'error while opening encoder' in text:
@@ -356,6 +356,10 @@ class DmRender(BaseRender):
             base_vencoder_args = list(self.vencoder_args)
         else:
             base_vencoder_args = list(base_vencoder_args)
+        # 放回 kwargs：首次调用 / 硬件重试都用同一份编码参数。
+        # （原来 pop 掉之后没放回，首次和重试都退回 self.vencoder_args，
+        #   调用方传进来的 vencoder_args 会被悄悄丢掉。）
+        render_kwargs['vencoder_args'] = base_vencoder_args
         try:
             status, info = self.render_helper(video.path, danmaku, output, **render_kwargs)
 
