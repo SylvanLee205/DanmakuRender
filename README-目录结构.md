@@ -61,6 +61,32 @@ F:\DanmakuRender-2026.01.10\Start_Render.bat 里写的是  cd "F:\123Pan_Danmaku
 调用者（比如某个终端会话或 AI 助手界面）一退出，录制程序会被一起带走。
 **要启动就双击 bat 或快捷方式**（父进程是 explorer.exe，独立安全）。
 
+---
+
+## 二·五、日常启停（2026-10-19 新增，双击即可）
+
+| 想做什么 | 双击哪里 | 背后发生了什么 |
+|---|---|---|
+| **启动** | 桌面 `DMR-启动.bat`（或项目根 `Start_DMR.bat`） | 先查有没有实例 → 没有才拉起 `Start_Render.bat`（守护 + 录制） |
+| **停止** | 桌面 `DMR-停止.bat`（或项目根 `Stop_DMR.bat`） | 停守护 → 停 DMR → 停 streamgears/ffmpeg 子进程；**不会重启** |
+
+两者都是纯 ASCII + CRLF 的批处理，内部只调用 `tools\autostart_guard.py` 与 `tools\stop_dmr.py`。
+
+### 为什么不能直接关窗口 / 按 Ctrl+C
+
+- **关窗口**：`cmd` 和 python 一起没了，但 `streamgears`/`ffmpeg` 这类孙进程可能残留，
+  于是同一个主播两路录制 → 孤儿 `[正在录制]` 分段（2026-10-07 踩过）。
+- **Ctrl+C**：python 退出后，`Start_Render.bat` 会在 **10 秒后自动把它拉起来**，
+  等于"没停"。
+
+所以"停"必须**先停守护**，再停主进程和子进程 —— 这正是 `Stop_DMR.bat` 做的。
+如果是"停完马上要重启"，直接用 `tools\cleanup_duplicate_streamgears.py`（会多等 150 秒让孤儿分段沉淀）。
+
+> `.cmd` 与 `.bat` 的关系：两者都是 `cmd.exe` 解释的批处理，语法完全相同；
+> `.cmd` 只是 NT 时代为区分 DOS 的 `.bat` 而加的扩展名。启动文件夹里放 `.cmd`
+> 是因为它可以被直接执行（而失效的 `.lnk` 无法在本机重建：没有 pywin32，COM 也被安全策略禁用）。
+
+
 
 ---
 
