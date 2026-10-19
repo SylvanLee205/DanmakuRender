@@ -67,7 +67,7 @@ for label, hw in cases:
             pass
     cmd = (['ffmpeg', '-y'] + hw +
            ['-fflags', '+discardcorrupt+genpts',
-            '-analyzeduration', '2147483647', '-probesize', '2147483647',
+            '-analyzeduration', '60000000', '-probesize', '100000000',
             '-ss', '600', '-t', '60', '-i', SRC,
             '-vf', VF,
             '-c:v', 'hevc_qsv', '-preset', 'medium', '-global_quality:v', '30',

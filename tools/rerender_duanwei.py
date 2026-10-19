@@ -23,8 +23,8 @@ VF = f"subtitles=filename='{vf_path}'"
 args = [
     'ffmpeg', '-y',
     '-fflags', '+discardcorrupt+genpts',
-    '-analyzeduration', '2147483647',
-    '-probesize', '2147483647',
+    '-analyzeduration', '60000000',
+    '-probesize', '100000000',
     '-i', SRC,
     '-vf', VF,
     '-c:v', 'hevc_qsv', '-g', '88', '-preset', 'medium',

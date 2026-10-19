@@ -76,7 +76,7 @@ class _FakeRender(DmRender):
         return False, self.fail_text
 
 
-def _make_render(**overrides):
+def _make_render(cls=_FakeRender, **overrides):
     params = dict(
         hwaccel_args=[], vencoder='hevc_qsv',
         vencoder_args=['-global_quality:v', '30'],
@@ -86,7 +86,7 @@ def _make_render(**overrides):
         hw_retry=2, hw_retry_delay=0, gop_multiplier=None,
     )
     params.update(overrides)
-    return _FakeRender(**params)
+    return cls(**params)
 
 
 class TestFramerateFallback(unittest.TestCase):
@@ -165,6 +165,47 @@ class TestFramerateErrorDetector(unittest.TestCase):
     def test_handles_empty(self) -> None:
         self.assertFalse(DmRender._is_framerate_error(None))
         self.assertFalse(DmRender._is_framerate_error(''))
+
+
+def _capture_probe_args(render):
+    """跑真实的 render_helper 组装参数，只把最后的 ffmpeg 调用换成假实现。"""
+    captured = {}
+
+    def fake_call(args):
+        captured['args'] = list(args)
+        return True, 'ok'
+
+    with mock.patch.object(render.raw_ffmpeg, 'call_ffmpeg',
+                           side_effect=fake_call), \
+            mock.patch('DMR.Render.dmrender.FFprobe.get_fps',
+                       return_value=22.0):
+        render.render_helper('seg.ts', 'seg.ass', 'out.mp4')
+    return captured['args']
+
+
+class TestProbeArgs(unittest.TestCase):
+    """探测参数必须是有限值。
+
+    实测（2026-10-19）：``-analyzeduration 2147483647`` 会让 ffmpeg 探测到
+    文件末尾；TS 没有逐包时长，扫完就丢掉按时间戳量出来的 22fps，改用 SPS
+    里声明的 ``time_scale/num_units_in_tick = 2000/1``（该流同时写着
+    ``fixed_frame_rate_flag=0``，即变帧率，所以 2000 是没意义的垃圾值），
+    编码器拿到 2000fps 就被 QSV 拒绝。同样内容装进 flv/mkv 不受影响。
+    """
+
+    def test_analyzeduration_is_bounded(self) -> None:
+        args = _capture_probe_args(_make_render(cls=DmRender))
+        value = int(args[args.index('-analyzeduration') + 1])
+        self.assertLess(value, 2147483647,
+                        'analyzeduration 不能再是 INT_MAX，否则 TS 会退回假帧率')
+        self.assertLessEqual(value, 300_000_000)
+
+    def test_probesize_is_bounded(self) -> None:
+        args = _capture_probe_args(_make_render(cls=DmRender))
+        value = int(args[args.index('-probesize') + 1])
+        self.assertLess(value, 2147483647)
+        self.assertGreaterEqual(value, 50_000_000,
+                                '别缩得太狠，损坏的 TS 头部还要靠它')
 
 
 if __name__ == '__main__':

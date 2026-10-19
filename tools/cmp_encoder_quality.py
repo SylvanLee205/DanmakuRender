@@ -15,7 +15,7 @@ os.makedirs(OUTDIR, exist_ok=True)
 SS, T = '600', '60'
 
 BASE = ['-fflags', '+discardcorrupt+genpts',
-        '-analyzeduration', '2147483647', '-probesize', '2147483647',
+        '-analyzeduration', '60000000', '-probesize', '100000000',
         '-ss', SS, '-t', T, '-i', SRC]
 
 CASES = [

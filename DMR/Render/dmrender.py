@@ -299,7 +299,17 @@ class DmRender(BaseRender):
         
         ffmpeg_args += [
             '-fflags', '+discardcorrupt+genpts',
-            '-analyzeduration', '2147483647', '-probesize', '2147483647',
+            # ⚠️ 2026-10-19 修：这两个值原来是 2147483647（INT_MAX），把 TS 渲染
+            #    推给了 QSV 一个 2000fps 的假帧率。实测链路：
+            #      -analyzeduration=INT_MAX 让 ffmpeg 一直探测到文件末尾；
+            #      TS 没有逐包时长，扫完就丢掉"按时间戳量出来的 22fps"，
+            #      改用 SPS 里声明的 time_scale/num_units_in_tick = 2000/1；
+            #      而该流 SPS 同时写着 fixed_frame_rate_flag=0（变帧率），
+            #      2000fps 纯属编码器没填好 → QSV 报 Current frame rate is
+            #      unsupported 并拒绝初始化编码器（-22）。
+            #    同样内容装进 flv/mkv 就没事（逐包有时间戳），所以跟容器也有关。
+            #    限制成有限值即可，20 秒内就能探测完，实测 tbr 恢复 22。
+            '-analyzeduration', '60000000', '-probesize', '100000000',
             '-i', video,
             filter_name, filter_str,
 
@@ -349,21 +359,22 @@ class DmRender(BaseRender):
         try:
             status, info = self.render_helper(video.path, danmaku, output, **render_kwargs)
 
-            # ── 源帧率不可用 → 补 -r 再上硬件（2026-10-19 新增）─────────────
-            # 实测：抖音某些 TS 分段的 r_frame_rate 是 0/0（只有 avg_frame_rate），
-            # ffmpeg 算不出输出帧率，hevc_qsv 直接抛
+            # ── 编码器拿不到可用帧率 → 补 -r 再上硬件（2026-10-19 新增）─────
+            # 现象：hevc_qsv 抛
             #   "Current frame rate is unsupported"
             #   "some encoding parameters are not supported by the QSV runtime"
             # 并拒绝启动编码器（return code -22）。
-            # 这跟 GPU 争抢无关，重试多少次都没用 —— 原来的逻辑会白等 2×60 秒，
-            # 最后还是降级到 libx265（实测吃满 6 个核、单分段渲染慢一倍以上）。
-            # 正确做法：显式给一个 -r（取值用 avg_frame_rate），硬件就能正常编码。
+            # 真正原因是编码器拿到的帧率是 0/1 或 2000/1，不是"VFR 不支持"
+            # （QSV 本身能编 VFR，实测变帧率输入正常出片）。
+            # 上面已把 -analyzeduration 从 INT_MAX 收窄，正常不会再触发；
+            # 这里保留兜底：万一别的上游喂来 0/1，就显式给一个 -r 重走硬件。
+            # 补 -r 会强制 CFR（会按 22fps 补帧），所以只在真失败时才做。
             if (not status and self._is_hw_encoder(self.vencoder)
                     and self._is_framerate_error(info)):
                 fps = FFprobe.get_fps(video.path)
                 if fps > 0:
                     self.logger.warning(
-                        f'源视频没有可用帧率（r_frame_rate=0/0），'
+                        f'编码器收到的帧率不可用（0/1 或异常值），'
                         f'{self.vencoder} 拒绝编码。改用固定 {fps:g}fps 重试。')
                     self._remove_quietly(output)
                     render_kwargs['vencoder_args'] = (

@@ -15,7 +15,7 @@ def esc(p):
 VF = f"subtitles=filename='{esc(DM)}'"
 
 BASE_IN = ['-fflags', '+discardcorrupt+genpts',
-           '-analyzeduration', '2147483647', '-probesize', '2147483647']
+           '-analyzeduration', '60000000', '-probesize', '100000000']
 
 # 用输入 seek（和 DMR 不同：DMR 是全量解码）。两种都测。
 CASES = [

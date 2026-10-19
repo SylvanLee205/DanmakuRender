@@ -26,7 +26,7 @@ START = '1980'
 DUR = '90'
 
 BASE_IN = ['-fflags', '+discardcorrupt+genpts',
-           '-analyzeduration', '2147483647', '-probesize', '2147483647']
+           '-analyzeduration', '60000000', '-probesize', '100000000']
 
 CASES = [
     ('A. hevc_qsv 默认（复现失败）', ['-c:v', 'hevc_qsv', '-g', '88',
