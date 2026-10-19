@@ -31,7 +31,13 @@ class ReplayTask():
         while self.stoped == False:
             msg:PipeMessage = self.recv_queue.get()
             try:
-                if msg.target.startswith('replay/') and msg.target.split('/')[1] == self.taskname:
+                # target 既可能是 `replay/<taskname>`，也可能是引擎解析后的裸任务名
+                # （engine._resolve_target 两者都支持）。这里统一剥掉前缀再比较，
+                # 否则裸任务名消息会入队后被**静默丢弃**（只留一行 info）。
+                _target = msg.target or ''
+                if _target.startswith('replay/'):
+                    _target = _target[len('replay/'):]
+                if _target == self.taskname:
                     event = msg.source +'/'+ msg.event
                     funcs = self._event_dict.get(event) or self._event_dict.get(msg.event)
                     if isinstance(funcs, list):

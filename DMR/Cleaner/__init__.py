@@ -107,24 +107,39 @@ class Cleaner():
             raise KeyError(name)
 
     def _rearm_pending(self) -> None:
-        """启动时重读待删清单：到期的立刻删，未到期的重新 arm。"""
-        entries = self._journal_load()
-        if not entries:
-            return
-        now = time.time()
-        alive, overdue = [], []
-        for e in entries:
-            pairs = e.get('pairs') or []
-            # 文件已经不存在 → 直接从清单剔除（幂等）
-            pairs = [(a, b) for a, b in pairs if a and os.path.exists(a)]
-            if not pairs:
-                continue
-            e['pairs'] = pairs
-            (overdue if float(e.get('due_ts') or 0) <= now else alive).append(e)
+        """启动时重读待删清单：到期的立刻删，未到期的重新 arm。
+
+        **「读 → 算 → 写」必须在同一把锁内完成**：删除线程会在删除成功后调用
+        ``_journal_remove``，它做的是同样的「读-改-写」。两边只要有一边在锁外，
+        就会互相覆盖（实测：``_journal_remove`` 先读到旧清单、后写回，会把刚剔除的
+        废条目又带回来；反向也可能丢掉刚新增的待删项 —— 那正是本次要修的漏洞类型）。
+        提交删除任务放到锁外，避免删除线程等在锁上。
+        """
+        with self._lock:
+            entries = self._journal_load()
+            if not entries:
+                return
+            now = time.time()
+            alive, overdue = [], []
+            for e in entries:
+                pairs = e.get('pairs') or []
+                # 文件已经不存在 → 直接从清单剔除（幂等）
+                pairs = [(a, b) for a, b in pairs if a and os.path.exists(a)]
+                if not pairs:
+                    continue
+                e['pairs'] = pairs
+                (overdue if float(e.get('due_ts') or 0) <= now else alive).append(e)
+
+            # ⚠️ 必须写 alive + overdue：
+            #    只写 alive 会把"已到期、但删除任务刚提交还没执行"的条目一起抹掉；
+            #    若进程在这个窗口里再退出一次，那些文件就彻底失去记录。
+            #    overdue 只能由 _clean_subprocess 成功后的 _journal_remove 移除。
+            if len(alive) + len(overdue) != len(entries):
+                self._journal_save(alive + overdue)
 
         self.logger.info(
-            f'待删清单：{len(entries)} 条，其中已到期 {len(overdue)} 条、'
-            f'未到期 {len(alive)} 条（文件已消失的已剔除）'
+            f'待删清单：{len(entries)} 条 → 已到期 {len(overdue)} 条、'
+            f'未到期 {len(alive)} 条、剔除失效 {len(entries) - len(alive) - len(overdue)} 条'
         )
 
         def _mk_task(e):
@@ -156,12 +171,6 @@ class Cleaner():
                 f'重新 arm 延迟清理（还剩 {wait_s/3600:.1f} 小时）: '
                 f'{", ".join(basename(a) for a, _ in e["pairs"])}'
             )
-
-        # ⚠️ 2026-10-19 修：原来只在 overdue 非空时才保存，
-        #    于是“文件全部已消失、没有到期项”时清单**永远不会被清空**，
-        #    每次启动都重复扫一遍废条目。现在只要发生了剔除就写回。
-        if len(alive) + len(overdue) != len(entries):
-            self._journal_save(alive)
 
     def _pipeSend(self, event, msg, target='engine', request_id=None, dtype=None, data=None, **kwargs):
         if self.send_queue:

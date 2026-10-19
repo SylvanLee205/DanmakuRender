@@ -288,6 +288,10 @@ class DmRender(BaseRender):
     def render_one(self, video: VideoInfo, output: str, **kwargs):
         if not exists(video.path):
             raise RuntimeError(f'不存在视频文件 {video.path}，跳过渲染.')
+        # 把源时长交给渲染器，供"卡死超时"计算（否则超时会退化成一个固定值，
+        # 长分段/软编码降级会被误杀）。必须在每次 render_helper 之前设置：
+        # 硬件重试与降级复用同一个 raw_ffmpeg，值会一直有效。
+        self.raw_ffmpeg.set_source(video, video.path)
         danmaku = kwargs.get('danmaku') or video.dm_file_id
         if not danmaku or not exists(danmaku):
             raise RuntimeError(f'不存在弹幕文件 {danmaku}，跳过渲染.')

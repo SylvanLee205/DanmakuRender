@@ -782,11 +782,24 @@ class LiveEvents(BaseEvents):
         #    **漏了这里的调用点** —— 导致跳过上传规则完全失效（横屏/高码率/高帧率
         #    的视频本应跳过，却全被上传，白占带宽和网盘空间）。
         skip_rule = self._get_upload_skip_rule()
+        # ⚠️ 2026-10-19：跳过上传规则只能用于**有上传规则的槽位**。
+        #    之前对所有 'ready' 的 vtype 都跑一遍，连 src_video（上传配置里根本没有它）
+        #    也会去做 ffprobe 判断，日志里出现大量
+        #    「src_video 命中跳过上传规则（不上传）」的误报，库里还把它记成 SKIPPED。
+        _upload_types = set()
+        for _k in (upload_args or {}):
+            if _k == 'all':
+                _upload_types.update(('src_video', 'src_video_pre', 'dm_video'))
+            else:
+                _upload_types.update(str(_k).split('+'))
         for idx, video_state in enumerate(self.state_dict[group_id]):
             if _idx is not None and idx != _idx:
                 continue
             for vtype, info in video_state.items():
                 if info['status'] != 'ready':
+                    continue
+                # 该槽位压根不上传 → 跳过规则无意义，直接不判断
+                if vtype not in _upload_types:
                     continue
                 # 命中跳过规则 → 标成 upload_skipped（清理流程据此判定"该传的都处理完了"）。
                 # 标记必须在提交上传任务之前，否则状态已被置为 uploading。

@@ -73,7 +73,13 @@ def main():
                     '-err_detect', 'ignore_err',
                     '-fflags', '+discardcorrupt+genpts',
                     '-i', SRC,
-                    '-vf', f"subtitles='{ASS}'",
+                    # ⚠️ 2026-10-19 修：输入侧 -ss 会把 filter 看到的 PTS 归零，
+                    #    于是 subtitles 滤镜**每一块都从 0 秒开始**取弹幕 ——
+                    #    实测 showinfo：`-ss 600 -i file` 后首帧 pts_time=0，
+                    #    第 2 块起弹幕全部错位（相当于把前 600 秒的弹幕重播一遍）。
+                    #    修法：进滤镜前把 PTS 平移回绝对时间，滤镜后再归零，
+                    #    这样字幕对得上，拼出来的整体时间轴也从 0 开始（concat 安全）。
+                    '-vf', f"setpts=PTS+{ss}/TB,subtitles='{ASS}',setpts=PTS-STARTPTS",
                     '-noautoscale', *enc, *AUD,
                     '-movflags', '+faststart', out])
             t0 = __import__('time').time()

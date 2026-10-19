@@ -253,6 +253,18 @@ C/D/E/F 等章节**。该文件未被 git 跟踪且没有备份，无法完整�
 | R11 | ⚪ P3 | `ReplayTask` 仍要求 `replay/` 前缀，与 engine 的裸任务名路由不一致（潜在） | `replaytask.py:34` |
 | R12 | ⚪ P3 | `_free_state_memory` 的 `final_status` 不含 `uploaded`，`w_dmfile: False` 下分组只能 72h 超时释放 | `liveevents.py:915-920` |
 
+### 12:30 第二轮复查新增（复检报告见 [`复查报告-20261019-复检.md`](复查报告-20261019-复检.md)）
+
+R1–R5、R7、R8、R12 已核实修复；R6、R10、R11 仍未修；R9 改法有副作用。
+
+| 编号 | 级别 | 缺陷 | 位置 |
+|---|---|---|---|
+| N1 | 🔴 P0 | 渲染超时恒为 600 秒（`src_duration` 从未赋值）→ 实测 2/72 次正常渲染超过 600s（最长 16.1 分钟）、libx265 降级 31 分钟必被 kill | `Render/ffmpeg.py:44` ✅**已修**（13:30，见复检报告第五节） |
+| N2 | 🔴 P0 | `cleanup_duplicate_streamgears.py` 被截断 145→46 行，重启流程整段丢失（静默返回 0，不报错） | `tools/cleanup_duplicate_streamgears.py`（commit ebffcea） ✅**已修** |
+| N3 | 🟠 P1 | `_rearm_pending` 保存 `alive` 而非 `alive+overdue` → 已到期未执行的条目被提前移出清单（已复现） | `Cleaner/__init__.py` 末尾 ✅**已修** |
+| N6 | ⚪ P3 | 启动自检把已删除的 `.bak` 当"丢失配置"，每次启动一条 ERROR（次日 04:00 快照后自愈） | `main.py:_verify_configs` ✅**已修** |
+
+
 > 改 R1/R3/R5 涉及清理与状态写入，改完必须跑 `tools/test_clean_order.py`、`tools/test_skip_upload_flow.py`
 > 与全量单测（基线 `Ran 437 tests, OK (expected failures=5)`）。
 

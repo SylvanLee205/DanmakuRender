@@ -158,6 +158,7 @@ class Render():
 
     def _render_subprocess(self, task):
         task['status'] = 'rendering'
+        target_render = None
         try:
             render_args = task['args']
             mode:str = task['mode']
@@ -177,15 +178,21 @@ class Render():
             os.makedirs(os.path.dirname(output), exist_ok=True)
 
             self._render_class[task['uuid']] = target_render
-            status, info = target_render.render_one(video=video, output=output)
-            self._render_class.pop(task['uuid'])
+            try:
+                status, info = target_render.render_one(video=video, output=output)
+            finally:
+                # ⚠️ 2026-10-19：原来只有成功/失败两条正常路径会 pop，
+                #    render_one 抛异常时条目会永久留在 _render_class 里
+                #    （每次失败泄漏一个渲染器对象，且 stop() 会对死对象再 stop 一次）。
+                self._render_class.pop(task['uuid'], None)
 
             if status:
                 self._gather(task, 'info', desc=info)
             else:
                 self._gather(task, 'error', desc=info)
         except KeyboardInterrupt:
-            target_render.stop()
+            if target_render is not None:
+                target_render.stop()
         except Exception as e:
             self.logger.exception(e)
             self._gather(task, 'error', desc=e)

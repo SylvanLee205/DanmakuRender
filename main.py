@@ -230,6 +230,15 @@ def _verify_configs(config, logger):
                                 cur.add(os.path.relpath(os.path.join(root, f),
                                                         'configs'))
                         lost = sorted(set(man.get('files', {})) - cur)
+                        # ⚠️ 2026-10-19：快照里可能残留 .bak/.tmp/编辑器临时文件
+                        #    （旧版 backup_configs 会收录它们）。这些不是"配置丢失"，
+                        #    否则每次启动都会报一条假 ERROR，把真正的告警淹掉。
+                        #    实测：DMR-灰蒙蒙.yml.bak-20261018-223751 被清理后，
+                        #    启动自检连续报「丢失 1 个配置」。
+                        lost = [x for x in lost
+                                if not ('.bak' in x.lower() or x.endswith('~')
+                                        or x.lower().endswith('.tmp')
+                                        or x.lower().endswith('.swp'))]
                         if lost:
                             logger.error('  ❌ 相比快照 %s 丢失 %d 个配置:',
                                          snaps[-1], len(lost))
