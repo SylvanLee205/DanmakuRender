@@ -519,12 +519,22 @@ class LiveEvents(BaseEvents):
             return
 
         if action is UnusableFileAction.DISCARD and path:
-            try:
-                if os.path.exists(path):
-                    os.remove(path)
-                    reason += '，已按配置删除'
-            except OSError as e:
-                self.logger.warning(f'删除不可用产物 {path} 失败：{e}')
+            # ⚠️ 2026-10-19 用户硬性要求：弹幕版永不清理。
+            #    即使这段产物被判"不可用"（残缺/读不出时长），也只标记状态，
+            #    文件留下给人处理 —— 用户宁可留个坏文件，也不要它消失。
+            from DMR.Cleaner import is_dm_video_path
+            if is_dm_video_path(path):
+                self.logger.error(
+                    f'产物 {item.artifact_id} 判定不可用，但它是弹幕版 —— '
+                    f'按规则不删除，仅标记状态（文件保留）: {path}')
+                reason += '，弹幕版按规则不删除'
+            else:
+                try:
+                    if os.path.exists(path):
+                        os.remove(path)
+                        reason += '，已按配置删除'
+                except OSError as e:
+                    self.logger.warning(f'删除不可用产物 {path} 失败：{e}')
         try:
             self.state_repo.set_artifact_state(
                 item.artifact_id, ArtifactState.SKIPPED, last_error=reason)
@@ -1003,8 +1013,12 @@ class LiveEvents(BaseEvents):
                             #         + w_dmfile: False
                             #    效果：弹幕版上传成功后，只删源视频和源弹幕，
                             #          弹幕版本身保留在本地（状态保持 uploaded）。
-                            keep_self = (vtype == 'dm_video'
-                                         and arg.get('w_dmfile', True) is False)
+                            # ⚠️ 2026-10-19 用户硬性要求：**弹幕版永不清理**。
+                            #    原来只有配置写 w_dmfile: False 才保留弹幕版本身，
+                            #    一旦配置被改回 True（或默认值变了），上传成功的
+                            #    弹幕版就会被删 —— 一次性、不可恢复。
+                            #    现在无条件保留，不看配置。Cleaner 里还有第二道闸。
+                            keep_self = (vtype == 'dm_video')
                             files = [] if keep_self else [info['file']]
 
                             # 判断是否需要清理源文件
@@ -1064,21 +1078,10 @@ class LiveEvents(BaseEvents):
             final_status = 'cleaned'
 
         ok_status = {final_status, 'failed', 'upload_skipped'}
-        # 弹幕版被要求保留（w_dmfile False）时，'uploaded' 就是它的终点
-        _keep_dm = False
-        try:
-            for _k, _rules in (self.config.get('clean_args') or {}).items():
-                if _k == 'all' or 'dm_video' in str(_k).split('+'):
-                    for _a in (_rules or []):
-                        if isinstance(_a, dict) and _a.get('w_dmfile', True) is False:
-                            _keep_dm = True
-                            break
-                if _keep_dm:
-                    break
-        except Exception:
-            pass
-        if _keep_dm:
-            ok_status.add('uploaded')
+        # ⚠️ 2026-10-19：弹幕版永不清理（用户要求），它上传成功后不会再有
+        #    'cleaned' 这个状态，所以 'uploaded' 就是它的终点。
+        #    原来靠"配置里 w_dmfile 是否为 False"来判断，配置一改就退化成
+        #    只能等 72 小时超时释放；改成按 vtype 判断，与配置无关。
 
         for group_id in list(self.ended_dict.keys()):
             # ``ended_dict`` 可能含有 ``state_dict`` 里没有的组：
@@ -1091,7 +1094,12 @@ class LiveEvents(BaseEvents):
             need_free = True
             for idx, video_state in enumerate(self.state_dict[group_id]):
                 for vtype, info in video_state.items():
-                    if info['status'] is not None and info['status'] not in ok_status:
+                    _st = info['status']
+                    if _st is None:
+                        continue
+                    if vtype == 'dm_video' and _st == 'uploaded':
+                        continue
+                    if _st not in ok_status:
                         need_free = False
                         break
                 if not need_free: break

@@ -11,6 +11,25 @@ from typing import Tuple
 from DMR.utils import *
 
 
+#: 弹幕版产物所在的目录后缀（渲染输出目录 `xxx（弹幕版）/`）
+DM_VIDEO_DIR_MARK = '（弹幕版）'
+
+
+def is_dm_video_path(path) -> bool:
+    """是不是「弹幕版」产物（渲染出来的 mp4，用户要求**永久保留**）。
+
+    2026-10-19 用户明确要求：弹幕版文件永远不清理，是重中之重。
+    所以这个判断放在代码里当硬约束，而不是只靠 clean_args 配置 ——
+    配置被改回 / 默认值变了 / 状态库恢复出旧的清理任务，都不能把弹幕版删掉。
+    """
+    if not path:
+        return False
+    try:
+        return DM_VIDEO_DIR_MARK in os.path.normpath(str(path))
+    except Exception:                                         # noqa: BLE001
+        return False
+
+
 class Cleaner():
     def __init__(self,
                  pipe:Tuple[queue.Queue, queue.Queue],
@@ -123,6 +142,13 @@ class Cleaner():
             alive, overdue = [], []
             for e in entries:
                 pairs = e.get('pairs') or []
+                # 弹幕版永不清理：历史清单里万一有，直接剔掉，绝不补删
+                _before = len(pairs)
+                pairs = [(a, b) for a, b in pairs if not is_dm_video_path(a)]
+                if len(pairs) != _before:
+                    self.logger.warning(
+                        f'待删清单里有弹幕版条目，已剔除（永不清理）: '
+                        f'{basename(next((a for a, _ in e.get("pairs") or [] if is_dm_video_path(a)), ""))}')
                 # 文件已经不存在 → 直接从清单剔除（幂等）
                 pairs = [(a, b) for a, b in pairs if a and os.path.exists(a)]
                 if not pairs:
@@ -265,6 +291,16 @@ class Cleaner():
                 file:FileInfo
                 if not exists(file.path):
                     self.logger.warning(f'文件 {file.path} 不存在，跳过清理.')
+                    continue
+
+                # ── 硬性保护：弹幕版永不删除（2026-10-19 用户要求，"重中之重"）──
+                # 不依赖 clean_args：配置被改、默认值变化、旧任务被恢复，
+                # 都不能让弹幕版消失。这一条一旦出错是不可恢复的数据丢失，
+                # 所以宁可在这里拦一道，出错就往死里喊。
+                if method == 'delete' and is_dm_video_path(file.path):
+                    self.logger.error(
+                        f'拒绝删除弹幕版（按规则永不清理）: {file.path}'
+                        f' —— 触发方: {task.get("source")}；请检查 clean_args 配置。')
                     continue
 
                 # ── 清理消息：原文件和弹幕文件合并成一行 ──
