@@ -73,6 +73,11 @@ def walk_configs():
     for root, dirs, files in os.walk(CONFIGS):
         dirs[:] = [d for d in dirs if d != '__pycache__']
         for f in files:
+            # ⚠️ 2026-10-19：跳过备份/\u4e34时文件。
+            #    原来把 .bak-* 也收进快照，于是清理掉一个过期 .bak 后，
+            #    启动自检就报「相比快照丢失 1 个配置」—— 震惊但无害。
+            if '.bak' in f or f.startswith('~') or f.endswith('.tmp'):
+                continue
             p = os.path.join(root, f)
             rel = os.path.relpath(p, CONFIGS)
             out[rel] = p

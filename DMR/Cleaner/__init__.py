@@ -157,7 +157,10 @@ class Cleaner():
                 f'{", ".join(basename(a) for a, _ in e["pairs"])}'
             )
 
-        if overdue:
+        # ⚠️ 2026-10-19 修：原来只在 overdue 非空时才保存，
+        #    于是“文件全部已消失、没有到期项”时清单**永远不会被清空**，
+        #    每次启动都重复扫一遍废条目。现在只要发生了剔除就写回。
+        if len(alive) + len(overdue) != len(entries):
             self._journal_save(alive)
 
     def _pipeSend(self, event, msg, target='engine', request_id=None, dtype=None, data=None, **kwargs):
