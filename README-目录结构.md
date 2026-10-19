@@ -45,13 +45,33 @@ F:\DanmakuRender-2026.01.10\Start_Render.bat 里写的是  cd "F:\123Pan_Danmaku
 
 | 位置 | 作用 | 状态 |
 |---|---|---|
-| **`Install_Boot_Task.bat`** | 建「开机启动」计划任务（Administrator + 密码），**不占 console、不需要登录** | ★ 推荐，需双击一次并输入密码 |
+| **`Install_Boot_Task.bat`** | 建「开机启动」计划任务（Administrator + 密码），**不占 console、不需要登录** | ★ 最强保险，需双击一次并输入密码 |
 | `Remove_Boot_Task.bat` | 删除上面那个计划任务 | 回滚用 |
+| **`Fix_RDP_Lockout.bat`** | 万一 RDP 又被拒：关掉自动登录并打印 `logoff 1` 指令 | 桌面有同名入口 |
 | Startup\`DanmakuRender_AutoUp.cmd` | 登录后自启（调 `tools\autostart_launch.py`，带 3 次重试） | 兜底；已装计划任务时会被守卫跳过 |
 | `Start_Render.bat` | 原地守护循环（程序退出 10 秒后重拉，纯 ASCII + CRLF） | 正常 |
 | `Run_DMR.bat` | 计划任务的动作：先跑守卫，没实例才 `call Start_Render.bat` | 正常 |
 | 桌面 `DMR-启动.bat` / `DMR-停止.bat` | 手动启停（停止会连子进程一起清） | 正常 |
-| 桌面 `DMR-重启后检查.bat` | 一键自检（进程/版本/任务数/ERROR/状态库） | 正常 |
+| 桌面 `DMR-重启后检查.bat` | 一键自检（进程/版本/任务数/ERROR/状态库/开机任务） | 正常 |
+
+### 2026-10-19 15:20 的访问配置（事故后的最终值）
+
+```
+HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server
+    fSingleSessionPerUser = 0     ← 允许同一账号同时有 console 与 RDP 会话
+HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon
+    AutoAdminLogon  = 1           ← 恢复开机自动登录（密码在 LSA，不用重输）
+    ForceAutoLogon  = 0           ← 注销后不强制秒登
+```
+
+**行为变化（重要）**：`fSingleSessionPerUser=0` 之后，RDP 会**新建一个独立会话**，
+不再接管 console。所以你 RDP 进来看到的是干净桌面，**看不到 console 里那个 DMR 窗口** ——
+确认程序是否在跑请用桌面 `DMR-重启后检查.bat`，不要凭"没看到黑窗口"判断。
+
+> ⚠️ 如果 RDP 客户端用的是 **`/admin`（管理会话）**，它固定连 console，console 被自动登录占着时
+> 仍然会被拒（0x5「已建立另一个连接」）。检查 `.rdp` 文件里有没有
+> `administrative session:i:1`，有就删掉，用普通连接。
+
 
 > 旧的三个 `.lnk`（`Start_Render.bat - 快捷方式` 等）指向已删除的 `F:\DanmakuRender-2026.01.10`，已移入 `backups\desktop-shortcuts-20261019`。
 
