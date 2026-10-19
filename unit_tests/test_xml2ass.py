@@ -362,7 +362,9 @@ class TestDmRenderXmlCompat(DMRTestCase):
         with mock.patch('DMR.utils.xml2ass._import_convert',
                         return_value=fake.convert_xml_to_ass), \
                 mock.patch.object(render, '_video_resolution', return_value=(1920, 1080)), \
-                mock.patch.object(render, 'render_helper', side_effect=fake_render_helper):
+                mock.patch.object(render, 'render_helper', side_effect=fake_render_helper), \
+                mock.patch('DMR.Render.dmrender.FFprobe.get_duration',
+                           return_value=10.0):
             status, info = render.render_one(self._video_info(self.xml),
                                              os.path.join(self.dir, 'out.mp4'))
 
@@ -403,7 +405,9 @@ class TestDmRenderXmlCompat(DMRTestCase):
                 handle.write(b'\0' * 2048)
             return True, 'ok'
 
-        with mock.patch.object(render, 'render_helper', side_effect=fake_render_helper):
+        with mock.patch.object(render, 'render_helper', side_effect=fake_render_helper), \
+                mock.patch('DMR.Render.dmrender.FFprobe.get_duration',
+                           return_value=10.0):
             status, _ = render.render_one(self._video_info(self.ass),
                                           os.path.join(self.dir, 'out.mp4'))
         self.assertTrue(status)

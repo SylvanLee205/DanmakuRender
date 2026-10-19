@@ -416,6 +416,26 @@ class DmRender(BaseRender):
                         src_dur = float(FFprobe.get_duration(video.path) or 0)
                     ref_src = '源文件容器时长'
                 out_dur = float(FFprobe.get_duration(output) or 0)
+
+                # ⚠️⚠️ 2026-10-19 修漏洞：产物**读不出时长**必须当失败。
+                #    原来写的是 `if src_dur > 0 and out_dur > 0`，
+                #    于是 out_dur 为 0 时整个校验**静默跳过**。
+                #    而这恰恰是坏文件的特征：mp4 被中途杀掉时 `moov` 索引
+                #    根本没写进去 → 播放器报 "moov atom not found"，
+                #    ffprobe 也读不出时长 → 被当成正常产物上传。
+                #    实测事故：哭哭不嘻嘻 03:39 的弹幕版（59.3 MB）本地和网盘都播不了。
+                if out_dur <= 0:
+                    try:
+                        _sz = os.path.getsize(output)
+                    except OSError:
+                        _sz = 0
+                    self.logger.error(
+                        f'渲染产物无法读取时长（{output}，{_sz/1024**2:.1f} MB），'
+                        f'判定为失败。通常是 ffmpeg 被中途杀掉导致 moov 索引未写入。')
+                    return False, (
+                        f'渲染产物不可读（moov 缺失 / 文件未收尾，'
+                        f'{_sz/1024**2:.1f} MB）。ffmpeg 输出尾部:\n{str(info)[-800:]}')
+
                 if src_dur > 0 and out_dur > 0:
                     ratio = out_dur / src_dur
                     if ratio < 0.90:
