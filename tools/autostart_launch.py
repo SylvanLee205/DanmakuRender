@@ -59,7 +59,9 @@ LOCK = os.path.join(UP, 'logs', 'autostart.lock')
 RETRIES = 3                 # 启动重试次数
 WAIT_AFTER_LAUNCH = 25      # 每次启动后等多少秒查进程
 INITIAL_GRACE = 180         # 守护模式：开机后等这么久才允许 session 0 兜底
-LOGGED_IN_DEAD_GRACE = 600  # 有人登录但 DMR 死了，等这么久才 session 0 兜底
+LOGGED_IN_DEAD_GRACE = 1800  # 有人登录但 DMR 死了，等这么久才 session 0 兜底
+                             # （登录自启自己有 3 次重试；给够了时间，
+                             #   用户手动双击启动也不会被"已在运行"挡住）
 POLL = 60                   # 守护模式轮询间隔（秒）
 LOCK_MAX_AGE = 150          # 互斥锁超过这么久算陈旧（上一个运行者崩了）
 
