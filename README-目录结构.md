@@ -36,22 +36,31 @@ F:\DanmakuRender-2026.01.10\Start_Render.bat 里写的是  cd "F:\123Pan_Danmaku
 
 ---
 
-## 二、所有启动入口（都已指向 AutoUp）
+## 二、启动入口（2026-10-19 核实并修正）
 
-| 位置 | 目标 |
-|---|---|
-| 桌面 `Start_Render.bat - 快捷方式.lnk` | `F:\DanmakuRender_AutoUp\Start_Render.bat` |
-| 桌面 `DanmakuRender_AutoUp - 快捷方式.lnk` | `F:\DanmakuRender_AutoUp` |
-| 桌面 `configs - 快捷方式.lnk` | `F:\DanmakuRender_AutoUp\configs` |
-| **开机自启** `Startup\Start_Render.bat - 快捷方式.lnk` | `F:\DanmakuRender_AutoUp\Start_Render.bat` |
-| 开始菜单 `configs.lnk` | `F:\DanmakuRender_AutoUp\configs` |
+| 位置 | 目标 | 状态 |
+|---|---|---|
+| **开机自启** `Startup\DanmakuRender_AutoUp.cmd` | 先跑 `tools\autostart_guard.py` 查实例，没有才 `explorer.exe` 拉起 `Start_Render.bat` | ✅ 2026-10-19 重建 |
+| `F:\DanmakuRender_AutoUp\Start_Render.bat` | 本项目（`cd` 指向自身目录，纯 ASCII + CRLF，崩溃 10 秒后重拉） | ✅ 正常 |
+| 桌面 `Start_Render.bat - 快捷方式.lnk` | ~~`F:\DanmakuRender-2026.01.10\Start_Render.bat`~~（目录已删除） | ❌ 失效，需手工右键改指向 |
+| 桌面 `DanmakuRender_AutoUp - 快捷方式.lnk` | ~~`F:\123Pan_DanmakuRender`~~（目录已删除） | ❌ 失效 |
+| 桌面 `configs - 快捷方式.lnk` | ~~`F:\123Pan_DanmakuRender\configs`~~（目录已删除） | ❌ 失效 |
 
-`Start_Render.bat` 的行为：发一条推送通知 → `cd` 到项目目录 → 跑 `main.py`
-→ 程序退出后等 10 秒 → `goto loop` 重新拉起（守护进程）。
+> ⚠️ **2026-10-19 实测**：开机自启的快捷方式一直指向已删除的 `F:\DanmakuRender-2026.01.10`，
+> 也就是说**重启后 DMR 根本不会启动**（本次已用 `.cmd` + 守卫脚本替换，见上表）。
+> 原失效快捷方式留档在 `backups\Start_Render.lnk.BROKEN-20261019`。
+> 桌面那三个 `.lnk` 仍指向旧路径，**不要靠它们启动**（本机没有 pywin32，无法自动重建 `.lnk`）。
+
+> ℹ️ 看到**两个** python 进程（`.venv\Scripts\python.exe` 与 `C:\Python311\python.exe`）
+> 是 Windows venv 启动器的正常行为：前者只是跳板，后者才是真正在跑的 DMR。
+> **不要**去杀其中一个「重复进程」。
+
+`Start_Render.bat` 的行为：`cd` 到项目目录 → 跑 `main.py` → 程序退出后等 10 秒 → `goto loop` 重新拉起（守护进程）。
 
 **⚠️ 不要用 PowerShell 的 `Start-Process` 启动它。** 那样它会成为调用者的子进程，
 调用者（比如某个终端会话或 AI 助手界面）一退出，录制程序会被一起带走。
 **要启动就双击 bat 或快捷方式**（父进程是 explorer.exe，独立安全）。
+
 
 ---
 
