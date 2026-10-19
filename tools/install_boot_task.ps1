@@ -10,6 +10,10 @@
 # LogonType=Password without re-supplying the password; it fails with
 # 0x8007052e "The user name or password is incorrect". So we re-register the
 # whole task here and ask for the password exactly once.
+#
+# IMPORTANT: -Principal and -Password belong to DIFFERENT parameter sets.
+# Using both raises "Parameter set cannot be resolved". Use -User / -Password /
+# -RunLevel together instead.
 
 $ErrorActionPreference = 'Stop'
 
@@ -27,14 +31,13 @@ $settings = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
     -MultipleInstances IgnoreNew `
     -ExecutionTimeLimit ([TimeSpan]::Zero)
-$principal = New-ScheduledTaskPrincipal -UserId 'Administrator' `
-    -LogonType Password -RunLevel Highest
+$runAs = "$env:COMPUTERNAME\Administrator"
 
 Write-Host 'Re-registering task with: unlimited runtime, start if missed, ignore new instance.'
 $pwd = Read-Host -AsSecureString 'Password for Administrator'
 
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger `
-    -Settings $settings -Principal $principal -Password $pwd -Force | Out-Null
+    -Settings $settings -User $runAs -Password $pwd -RunLevel Highest -Force | Out-Null
 
 $t = Get-ScheduledTask -TaskName $taskName
 $i = Get-ScheduledTaskInfo -TaskName $taskName
