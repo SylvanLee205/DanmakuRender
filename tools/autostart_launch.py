@@ -13,6 +13,9 @@
 用法：
     .venv\\Scripts\\python.exe tools\\autostart_launch.py
     .venv\\Scripts\\python.exe tools\\autostart_launch.py --dry-run
+    .venv\\Scripts\\python.exe tools\\autostart_launch.py --foreground
+        # 计划任务用：前台阻塞运行 Start_Render.bat，任务会一直显示"运行中"，
+        # 且启动/退出都写日志 —— session 0 没有控制台，日志是唯一的观察窗口。
 """
 import os
 import subprocess
@@ -23,6 +26,7 @@ UP = r'F:\DanmakuRender_AutoUp'
 BAT = os.path.join(UP, 'Start_Render.bat')
 LOG = os.path.join(UP, 'logs', 'autostart.log')
 DRY_RUN = '--dry-run' in sys.argv
+FOREGROUND = '--foreground' in sys.argv
 RETRIES = 3
 WAIT_AFTER_LAUNCH = 25
 
@@ -74,6 +78,19 @@ def main() -> int:
 
     if pids:
         log(f'跳过启动：已有 DMR 实例在运行（PID {", ".join(pids)}）。')
+        return 0
+
+    if FOREGROUND:
+        # 计划任务模式：阻塞在此，任务状态与 DMR 同生共死；退出码写日志。
+        # 这样"任务在不在跑"和"程序在不在跑"是同一件事，不会出现
+        # 任务显示就绪、程序其实早死了的假象。
+        log('计划任务模式：前台启动 Start_Render.bat（任务在此阻塞）')
+        try:
+            rc = subprocess.call(['cmd.exe', '/c', BAT], cwd=UP)
+            log(f'Start_Render.bat 已退出，returncode={rc}；任务随之结束')
+        except Exception as e:
+            log(f'前台启动失败（{type(e).__name__}: {e}）')
+            return 1
         return 0
 
     for attempt in range(1, RETRIES + 1):

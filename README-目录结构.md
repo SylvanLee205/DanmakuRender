@@ -54,23 +54,27 @@ F:\DanmakuRender-2026.01.10\Start_Render.bat 里写的是  cd "F:\123Pan_Danmaku
 | 桌面 `DMR-启动.bat` / `DMR-停止.bat` | 手动启停（停止会连子进程一起清） | 正常 |
 | 桌面 `DMR-重启后检查.bat` | 一键自检（进程/版本/任务数/ERROR/状态库/开机任务） | 正常 |
 
-### 2026-10-19 15:20 的访问配置（事故后的最终值）
+### 2026-10-19 15:35 的访问配置（事故后最终值）
 
 ```
 HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server
-    fSingleSessionPerUser = 0     ← 允许同一账号同时有 console 与 RDP 会话
+    fSingleSessionPerUser = 1     ← 恢复原值：RDP 接管 console，行为与以前一致
 HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon
     AutoAdminLogon  = 1           ← 恢复开机自动登录（密码在 LSA，不用重输）
     ForceAutoLogon  = 0           ← 注销后不强制秒登
 ```
 
-**行为变化（重要）**：`fSingleSessionPerUser=0` 之后，RDP 会**新建一个独立会话**，
-不再接管 console。所以你 RDP 进来看到的是干净桌面，**看不到 console 里那个 DMR 窗口** ——
-确认程序是否在跑请用桌面 `DMR-重启后检查.bat`，不要凭"没看到黑窗口"判断。
+> **2026-10-19 14:44 那次 0x5 的真正原因（推断已收敛）**：`已与远程电脑建立了另一个连接`
+> 是 **`/admin` 连 console 会话时**的典型报错。开机 14:43:48、自动登录完成 14:44:44，
+> 如果在那之间去连，console 还在"正在登录"，接管被拒。
+> **等 1~2 分钟（或等 DMR 启动通知）再连**，就不会再撞上。
+>
+> 这也解释了"以前点开就在桌面、能看到 DMR 窗口"——你连的是**已经登录好的那个会话**。
+> 自动登录被关掉的那两小时里，RDP 只能新建会话，所以才会"像重新开机、看不到 DMR"。
 
-> ⚠️ 如果 RDP 客户端用的是 **`/admin`（管理会话）**，它固定连 console，console 被自动登录占着时
-> 仍然会被拒（0x5「已建立另一个连接」）。检查 `.rdp` 文件里有没有
-> `administrative session:i:1`，有就删掉，用普通连接。
+> ⚠️ 如果把 `fSingleSessionPerUser` 改成 0，普通 RDP 会**新建独立会话**（看不到 console 里的 DMR 窗口），
+> 只有 `/admin` 才连 console。想保持"随便怎么连都落到同一个桌面"，就保持 1。
+
 
 
 > 旧的三个 `.lnk`（`Start_Render.bat - 快捷方式` 等）指向已删除的 `F:\DanmakuRender-2026.01.10`，已移入 `backups\desktop-shortcuts-20261019`。

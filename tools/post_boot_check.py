@@ -76,8 +76,10 @@ def main():
     else:
         print('  （空 —— 启动项没有执行过）')
         problems.append('autostart.log 为空，开机自启没有执行')
-    if lines and not any('准备启动' in l for l in lines[-3:]):
-        problems.append('最近的记录不是「准备启动」，可能是被判定为"已在运行"')
+    # 注意：最后一条是"跳过启动"本身是正常的（说明 DMR 已在运行）。
+    # 只有"程序没跑 + 最后一条也不是准备启动"才说明自启没干活，
+    # 所以这里只记一个提示，等第 3 段查到进程后再决定是否报问题。
+    autostart_hint = bool(lines) and not any('准备启动' in l for l in lines[-3:])
 
     # 3. 进程链
     head('3. 进程链')
@@ -97,6 +99,8 @@ def main():
         problems.append(f'DMR 进程数异常（{len(dmrs)} 个，正常是 2 个：venv 启动器 + 真身）')
     if dmrs and not guards:
         problems.append('DMR 在跑但守护不在 —— 崩溃后不会自动重启')
+    if not dmrs and autostart_hint:
+        problems.append('自启日志里最近没有「准备启动」，且当前没有 DMR 进程')
 
     # 4. 最新日志
     head('4. 最新日志')
@@ -181,6 +185,28 @@ def main():
             problems.append('自动登录已关且没有开机任务 —— 重启后 DMR 不会自己起来')
     else:
         print(f'  开机任务 DanmakuRender_Boot: ✅ {state}')
+        # 任务跑在 session 0，没有窗口；这里把"上次运行/结果码/错过次数"摊开，
+        # 不看日志也能知道它到底有没有干活。
+        info = ps("$i=Get-ScheduledTaskInfo -TaskName 'DanmakuRender_Boot'; "
+                  "'{0}|{1}|{2}' -f $i.LastRunTime, $i.LastTaskResult, "
+                  "$i.NumberOfMissedRuns")
+        parts = (info or '').split('|')
+        if len(parts) >= 3:
+            last_run, code, missed = parts[0], parts[1].strip(), parts[2].strip()
+            meanings = {
+                '0': '成功',
+                '267009': '正在运行（长时间任务，正常）',
+                '267011': '从未运行过',
+                '267014': '已被用户终止',
+                '1': '失败（退出码 1）',
+                '2': '失败（退出码 2，常见于依赖缺失）',
+            }
+            mean = meanings.get(code, '未知结果码')
+            print(f'    上次运行: {last_run}')
+            print(f'    结果码  : {code} → {mean}')
+            print(f'    错过次数: {missed}')
+            if code == '2':
+                problems.append('开机任务上次以退出码 2 结束 —— 看 logs/startup_error.log')
 
     # 结论
     head('结论')
