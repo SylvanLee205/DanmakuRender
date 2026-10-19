@@ -36,30 +36,42 @@ F:\DanmakuRender-2026.01.10\Start_Render.bat 里写的是  cd "F:\123Pan_Danmaku
 
 ---
 
-## 二、启动入口（2026-10-19 核实并修正）
+## 二、启动入口（2026-10-19 晚 重新梳理）
 
-| 位置 | 目标 | 状态 |
+> ⚠️ **2026-10-19 14:42 真实事故**：系统蓝屏（0x113 显卡驱动）重启后，
+> 自动登录占住了 console 会话，而 `fSingleSessionPerUser=1`，
+> 于是同一个账号的 RDP 被拒（0x5「已建立另一个连接」）——人在几十公里外，差点进不来。
+> 之后为了能 RDP，`AutoAdminLogon` 被关成 0。**代价是：重启后没人登录，启动文件夹的入口不会执行。**
+
+| 位置 | 作用 | 状态 |
 |---|---|---|
-| **开机自启** `Startup\DanmakuRender_AutoUp.cmd` | 先跑 `tools\autostart_guard.py` 查实例，没有才 `explorer.exe` 拉起 `Start_Render.bat` | ✅ 2026-10-19 重建 |
-| `F:\DanmakuRender_AutoUp\Start_Render.bat` | 本项目（`cd` 指向自身目录，纯 ASCII + CRLF，崩溃 10 秒后重拉） | ✅ 正常 |
-| 桌面 `Start_Render.bat - 快捷方式.lnk` | ~~`F:\DanmakuRender-2026.01.10\Start_Render.bat`~~（目录已删除） | ❌ 失效，需手工右键改指向 |
-| 桌面 `DanmakuRender_AutoUp - 快捷方式.lnk` | ~~`F:\123Pan_DanmakuRender`~~（目录已删除） | ❌ 失效 |
-| 桌面 `configs - 快捷方式.lnk` | ~~`F:\123Pan_DanmakuRender\configs`~~（目录已删除） | ❌ 失效 |
+| **`Install_Boot_Task.bat`** | 建「开机启动」计划任务（Administrator + 密码），**不占 console、不需要登录** | ★ 推荐，需双击一次并输入密码 |
+| `Remove_Boot_Task.bat` | 删除上面那个计划任务 | 回滚用 |
+| Startup\`DanmakuRender_AutoUp.cmd` | 登录后自启（调 `tools\autostart_launch.py`，带 3 次重试） | 兜底；已装计划任务时会被守卫跳过 |
+| `Start_Render.bat` | 原地守护循环（程序退出 10 秒后重拉，纯 ASCII + CRLF） | 正常 |
+| `Run_DMR.bat` | 计划任务的动作：先跑守卫，没实例才 `call Start_Render.bat` | 正常 |
+| 桌面 `DMR-启动.bat` / `DMR-停止.bat` | 手动启停（停止会连子进程一起清） | 正常 |
+| 桌面 `DMR-重启后检查.bat` | 一键自检（进程/版本/任务数/ERROR/状态库） | 正常 |
 
-> ⚠️ **2026-10-19 实测**：开机自启的快捷方式一直指向已删除的 `F:\DanmakuRender-2026.01.10`，
-> 也就是说**重启后 DMR 根本不会启动**（本次已用 `.cmd` + 守卫脚本替换，见上表）。
-> 原失效快捷方式留档在 `backups\Start_Render.lnk.BROKEN-20261019`。
-> 桌面那三个 `.lnk` 仍指向旧路径，**不要靠它们启动**（本机没有 pywin32，无法自动重建 `.lnk`）。
+> 旧的三个 `.lnk`（`Start_Render.bat - 快捷方式` 等）指向已删除的 `F:\DanmakuRender-2026.01.10`，已移入 `backups\desktop-shortcuts-20261019`。
 
-> ℹ️ 看到**两个** python 进程（`.venv\Scripts\python.exe` 与 `C:\Python311\python.exe`）
-> 是 Windows venv 启动器的正常行为：前者只是跳板，后者才是真正在跑的 DMR。
-> **不要**去杀其中一个「重复进程」。
+### 为什么登录自启曾经静默失效
 
-`Start_Render.bat` 的行为：`cd` 到项目目录 → 跑 `main.py` → 程序退出后等 10 秒 → `goto loop` 重新拉起（守护进程）。
+原实现是 `explorer.exe "Start_Render.bat"`。**登录瞬间 explorer 还没初始化完**，这个调用会被丢弃，
+`autostart.log` 里只有「准备启动」却永远没有进程（10-19 14:44/14:52/14:54 三次都这样）。
+现在改为 `tools\autostart_launch.py`：CreateProcess detached 启动 + 25 秒后复查 + 最多重试 3 次，每次结果都写日志。
 
-**⚠️ 不要用 PowerShell 的 `Start-Process` 启动它。** 那样它会成为调用者的子进程，
-调用者（比如某个终端会话或 AI 助手界面）一退出，录制程序会被一起带走。
-**要启动就双击 bat 或快捷方式**（父进程是 explorer.exe，独立安全）。
+### 关于 `timeout` 的坑
+
+`Start_Render.bat` 原来的重启延时用 `timeout /t 10`。**没有控制台时（计划任务 / session 0）它会立刻失败**，
+循环就变成零延时疯狂重启。已改成 `ping -n 11 127.0.0.1`。
+
+> ℹ️ 看到**两个** python 进程（`.venv\Scripts\python.exe` 与 `C:\Python311\python.exe`）是正常的：
+> 前者是 Windows venv 启动器，后者才是真正在跑的 DMR。**不要**杀其中一个"重复进程"。
+> **⚠️ 不要用 PowerShell 的 `Start-Process` 启动 `Start_Render.bat`** —— 它会成为调用者的子进程，
+> 调用者一退出录制就被带走。要么双击 bat，要么用计划任务。
+
+
 
 ---
 

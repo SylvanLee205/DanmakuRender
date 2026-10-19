@@ -42,8 +42,29 @@ def check_pypi():
         import PIL
         import flask
         return True
-    except ImportError:
-        input('Python 包未正确安装，回车自动安装:')
+    except ImportError as _imp_err:
+        # ⚠️ 2026-10-19：原来是裸 input()。无人值守启动时（计划任务 / session 0 /
+        #    开机自启）没有控制台，input() 会抛 EOFError 或永久挂住 —— 而那时
+        #    main.py **还没配置日志**，表现为"程序根本没起、连一行日志都没有"。
+        #    现在：交互终端仍然提示自动安装；非交互则写诊断文件 + 退出码 2。
+        try:
+            input('Python 包未正确安装，回车自动安装:')
+        except EOFError:
+            _msg = (f'缺少 Python 依赖（{_imp_err}），且当前无控制台无法交互安装。\n'
+                    f'请在命令行执行：\n'
+                    f'  cd /d F:\\DanmakuRender_AutoUp\n'
+                    f'  .venv\\Scripts\\python.exe -m pip install -r requirements.txt\n')
+            try:
+                import os
+                os.makedirs('logs', exist_ok=True)
+                with open(os.path.join('logs', 'startup_error.log'), 'a',
+                          encoding='utf-8') as _f:
+                    import time
+                    _f.write(f'[{time.strftime("%Y-%m-%d %H:%M:%S")}] {_msg}\n')
+            except Exception:
+                pass
+            print(_msg)
+            raise SystemExit(2)
         subprocess.Popen([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt', '-i', 'https://pypi.tuna.tsinghua.edu.cn/simple']).wait()
         print('Python 包安装完成.')
         return 

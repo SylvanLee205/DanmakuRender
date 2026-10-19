@@ -38,5 +38,8 @@ echo [%date% %time%] WARNING: program exited (crash or manual close).
 echo Restarting in 10 seconds ...
 echo.
 
-timeout /t 10
+rem NOTE: ping instead of timeout - timeout fails when there is no console
+rem       (e.g. when started by a scheduled task in session 0) and the loop
+rem       would restart the program with no delay at all.
+"%SystemRoot%\System32\ping.exe" -n 11 127.0.0.1 >nul
 goto loop
