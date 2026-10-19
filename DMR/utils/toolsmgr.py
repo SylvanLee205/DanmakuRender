@@ -91,7 +91,21 @@ def check_biliup():
 
     if sys.platform == 'win32':
         if not os.access("./tools/biliup.exe", os.F_OK):
-            input("Biliup未正确安装, 回车自动安装:")
+            # ⚠️ 2026-10-19：这里原来是裸的 input()，在服务/看门狗方式启动时
+            # 会**永远挂住**（没人给他回车），表现为 DMR 启动卡死且无日志。
+            # 实测：误删 tools/biliup.exe 后，非交互调用直接 EOFError。
+            # 现在：交互终端才提示自动安装；否则给出明确错误并退出。
+            # ⚠️ 不能用 sys.stdin.isatty() 判断：实测在 Windows 下
+            #    python x.py < NUL 仍然返回 True。
+            #    用 try/except 包住 input() 才靠谱：交互终端正常提示，
+            #    非交互（EOF）时给出明确指引而不是一个裸 EOFError。
+            try:
+                input("Biliup未正确安装, 回车自动安装:")
+            except EOFError:
+                raise RuntimeError(
+                    'tools/biliup.exe 缺失。它是**启动时强制检查**的依赖'
+                    '（即使录制引擎用 ffmpeg 也会检查）。'
+                    '请把 F:\\DanmakuRender_Mod\\tools\\biliup.exe 拷贝回本目录 tools/ 下。')
 
             import requests
             r = requests.get('https://github.com/biliup/biliup/releases/download/v1.1.28/biliupR-v1.1.28-x86_64-windows.zip', stream=True)
