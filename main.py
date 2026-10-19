@@ -419,6 +419,42 @@ def _verify_critical_names(logger):
             pass
 
 
+def _log_build_id(logger):
+    """启动时把当前 git 提交记进日志。
+
+    为什么需要：这是台长期在跑的生产机，"现在跑的到底是哪版代码"每次都要靠
+    进程启动时间和 git log 去推断；改完代码重启后也没法一眼确认新代码已加载。
+    这里直接读 .git（不启子进程），把短 hash 打进日志第一屏。
+
+    任何异常都只记 debug —— 这条日志绝不能影响启动。
+    """
+    try:
+        root = os.path.dirname(os.path.abspath(__file__))
+        head = os.path.join(root, '.git', 'HEAD')
+        if not os.path.exists(head):
+            return
+        with open(head, 'r', encoding='utf-8') as f:
+            ref = f.read().strip()
+        sha = ref
+        if ref.startswith('ref:'):
+            ref_path = os.path.join(root, '.git', ref[4:].strip())
+            if not os.path.exists(ref_path):
+                return
+            with open(ref_path, 'r', encoding='utf-8') as f:
+                sha = f.read().strip()
+        sha = sha.strip()
+        if 7 <= len(sha) <= 40 and all(c in '0123456789abcdef' for c in sha.lower()):
+            logger.info('代码版本: %s @ %s', VERSION, sha[:7])
+        else:
+            logger.debug('代码版本: %s（无法解析 git HEAD: %r）', VERSION, ref)
+    except Exception as e:
+        try:
+            logger.debug('读取代码版本失败（不影响启动）: %s: %s',
+                         type(e).__name__, e)
+        except Exception:
+            pass
+
+
 if __name__ == '__main__':    
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', default='configs/global.yml')
@@ -509,6 +545,7 @@ if __name__ == '__main__':
         logger.debug(f'内存诊断未启用: {_e}')
 
     logger.debug(f'VERSION: {VERSION}')
+    _log_build_id(logger)
 
     # 启动横幅：因为静默模式下控制台没有 INFO 日志，很容易看不出程序还在跑。
     # 用 print 直接输出（不经 logger），确保任何级别下都显示。
