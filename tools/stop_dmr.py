@@ -24,6 +24,16 @@ import time
 UP = r'F:\DanmakuRender_AutoUp'
 DRY_RUN = '--dry-run' in sys.argv
 
+# stdout/stderr 可能是管道（被别的程序捕获）或 GBK 控制台：
+# 下面的 ⚠️/❌/✅ 不在 GBK 字符集里，print 会直接 UnicodeEncodeError 崩掉。
+# 2026-10-20 实测：迁移时 stop_dmr 在"停止前"之后神秘消失、进程一个没停，
+# 就是这句炸的 —— 无人值守场景必须容忍编码问题。
+try:
+    sys.stdout.reconfigure(errors='replace')
+    sys.stderr.reconfigure(errors='replace')
+except Exception:
+    pass
+
 
 def ps(cmd):
     r = subprocess.run(['powershell', '-NoProfile', '-Command', cmd],

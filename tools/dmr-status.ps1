@@ -22,6 +22,22 @@ if ($procs.Count -gt 0) {
     Write-Host '  [未运行]  没有 python 进程' -ForegroundColor Red
 }
 
+# ---------- 1b. 会话位置（窗口在不在你眼前）----------
+$mySess = (Get-Process -Id $PID).SessionId
+$dmrSess = @(Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
+             Where-Object { $_.CommandLine -like '*main.py*' } |
+             Select-Object -ExpandProperty SessionId -Unique)
+if ($dmrSess.Count -gt 0) {
+    if ($dmrSess -contains $mySess) {
+        Write-Host ("  [窗口]  DMR 就在本会话（S{0}），控制台窗口能看到" -f $mySess) -ForegroundColor Green
+    } else {
+        Write-Host ("  [窗口]  DMR 在会话 {0}，你在会话 {1} —— 窗口不在你眼前！" -f ($dmrSess -join ','), $mySess) -ForegroundColor Yellow
+        Write-Host '          修复：运行计划任务 DanmakuRender_Desktop，或停掉旧实例后双击 Start_DMR.bat' -ForegroundColor Yellow
+    }
+} else {
+    Write-Host '  [窗口]  DMR 没在运行' -ForegroundColor Red
+}
+
 # ---------- 2. 正在录制 ----------
 Write-Host ''
 Write-Host '  正在录制' -ForegroundColor Cyan
@@ -93,6 +109,33 @@ if ($log) {
     }
 } else {
     Write-Host '    (找不到日志)' -ForegroundColor DarkGray
+}
+
+# ---------- 4b. 自启日志 ----------
+Write-Host ''
+Write-Host '  自启日志（logs\autostart.log 最后 4 条）' -ForegroundColor Cyan
+$al = Join-Path $root 'logs\autostart.log'
+if (Test-Path $al) {
+    Get-Content $al -Tail 4 -Encoding UTF8 -ErrorAction SilentlyContinue | ForEach-Object {
+        Write-Host ("    " + $_) -ForegroundColor Gray
+    }
+} else {
+    Write-Host '    （没有自启日志）' -ForegroundColor DarkGray
+}
+
+# ---------- 4c. 自动登录是否真的有效 ----------
+Write-Host ''
+Write-Host '  自动登录' -ForegroundColor Cyan
+$wl = Get-ItemProperty 'HKLM://SOFTWARE//Microsoft//Windows NT\CurrentVersion\Winlogon' -ErrorAction SilentlyContinue
+if ($wl -and $wl.AutoAdminLogon -eq '1') {
+    if ($wl.PSObject.Properties.Name -contains 'DefaultPassword') {
+        Write-Host '    已开启，密码已存 ✅（重启会自动进桌面）' -ForegroundColor Green
+    } else {
+        Write-Host '    开着但【没有存密码】—— 重启会停在登录界面！' -ForegroundColor Red
+        Write-Host '    修复：运行 netplwizard 取消勾选"要使用本计算机必须输入密码"，或把密码写进注册表' -ForegroundColor Red
+    }
+} else {
+    Write-Host '    已关闭（重启后需手动登录；DMR 由开机计划任务兜底，录像不停）' -ForegroundColor Yellow
 }
 
 # ---------- 5. 磁盘 ----------

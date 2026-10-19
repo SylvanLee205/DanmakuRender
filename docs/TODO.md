@@ -284,3 +284,51 @@ R1–R5、R7、R8、R12 已核实修复；R6、R10、R11 仍未修；R9 改法�
    · 期间上传的坏文件已从百度网盘删除。
 5. `recovery.on_interrupted_file` 已改 `keep` + 恢复流程补了弹幕转正，
    所以以后重启不会再丢分段（最多丢最后几秒）。
+
+## 2026-10-20 凌晨交接（04:45）
+
+### ⚠️ 现在必须做一件事
+**双击 `Start_DMR.bat`** —— 当前实例已停掉（它的控制台是隐藏的）。
+双击后会有熟悉的 DanmakuRender_Guard 窗口。10 分钟内不启动的话，
+session 0 的守护循环会兜底起一个（无窗口）实例，届时 Start_DMR.bat
+会提示"已在运行"，告诉我即可。
+
+### 自动登录是坏的（当前最大隐患）
+`AutoAdminLogon=1` 但注册表里**没有 DefaultPassword** → 重启只会停在登录界面。
+（昨天远程 AI 恢复了 AutoAdminLogon=1 但没写回密码；Windows 更新当初可能就是
+这么把它弄没的。）
+修复二选一：① 运行 `netplwizard`，取消勾选"要使用本计算机必须输入用户名和密码"
+并输入密码（20 秒，不用告诉我密码）；② 把密码给我，我写进注册表。
+
+### 会话配置（按你的要求）
+`fSingleSessionPerUser = 1`（默认值，一个账号一个会话：本机/RDP/UU/RustDesk
+全部共用同一个 console 桌面）。已从 0 改回 1。
+已知时序坑：重启后自动登录抢先占住 console 的那 1~2 分钟，普通 RDP 可能报
+0x5——等一两分钟再连即可；Mac 端可给 .rdp 加 `administrative session:i:1`
+强制接 console（等价 mstsc /admin）。
+
+### 窗口可见性的真相（实测）
+计划任务拉起的进程（含它的子孙）**控制台窗口必然隐藏**（tasklist /v 显示"暂缺"）。
+可见窗口只来自用户交互式启动。所以：
+- 登录自启（Startup 里的 .cmd → explorer 启动）走的是交互式路径，
+  **下次登录/重启后窗口应该自动出现**（待验证）；
+- DanmakuRender_SessionWatch / DanmakuRender_Desktop 任务只负责"把 DMR
+  挪到你会话"，它们拉起的实例无窗口（录像不受影响）。
+
+### 新东西
+- `tools/autostart_launch.py` 重写：登录模式（带会话迁移 + 互斥锁 + 重试）、
+  守护模式（常驻循环：无人登录且 DMR 死 → session 0 兜底；有人登录 → 交给登录自启）。
+- 新任务 `DanmakuRender_SessionWatch`：登录时 + 解锁时触发 → 窗口跟着人走。
+- 开机任务改为常驻守护循环（04:39 已手动拉起，session 0）。
+- `DMR-Status.bat` 新增：窗口在不在本会话、自启日志尾部、自动登录是否真的有效。
+- `post_boot_check.py` 新增同样的检测（第 3b/7 段）。
+- 修了两个真 bug：`stop_dmr.py` 打印 ⚠️/❌ 在 GBK 管道下 UnicodeEncodeError
+  直接崩（迁移停不干净的真凶）；`autostart_launch.py` break 分支
+  FOREGROUND_LOCAL 未绑定会 NameError。
+
+### 待办
+1. 重启前先修好自动登录（见上），否则重启后停在登录界面。
+2. 重启后验证：Startup 自启是否给出可见窗口；DMR-Status.bat 的[窗口]行。
+3. `11228ce`（上传闸门：mp4 读不出时长就拒绝上传）还没加载，下次重启生效。
+4. 两个孤儿 `[正在录制]*.ass`（灰蒙蒙 Part002 / 小鱼大王 Part000）建议挪隔离目录。
+5. 蓝屏根因（Arc 驱动）按之前结论处理：更新 Intel 显卡驱动。

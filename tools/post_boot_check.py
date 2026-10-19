@@ -102,6 +102,30 @@ def main():
     if not dmrs and autostart_hint:
         problems.append('自启日志里最近没有「准备启动」，且当前没有 DMR 进程')
 
+    # 3b. 会话位置：窗口在不在你眼前
+    head('3b. 会话位置')
+    try:
+        import ctypes
+        sess = ctypes.c_ulong(0)
+        ctypes.windll.kernel32.ProcessIdToSessionId(os.getpid(),
+                                                    ctypes.byref(sess))
+        mine = sess.value
+        raw = ps("Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | "
+                 "Where-Object { $_.CommandLine -like '*main.py*' } | "
+                 "ForEach-Object { $_.SessionId } | Select-Object -Unique")
+        dmr_sess = sorted({x.strip() for x in (raw or '').split()
+                           if x.strip().isdigit()})
+        print(f'  当前会话: {mine}    DMR 所在会话: {dmr_sess or "（没在跑）"}')
+        if dmr_sess and str(mine) not in dmr_sess:
+            print('  ⚠️ DMR 不在你当前会话 —— 控制台窗口看不到（录像不受影响）。')
+            print('     修复：停掉旧实例后双击 Start_DMR.bat，或运行计划任务 '
+                  'DanmakuRender_Desktop。')
+            problems.append(f'DMR 在会话 {dmr_sess}，当前会话 {mine}，窗口不可见')
+        elif dmr_sess:
+            print('  ✅ DMR 就在当前会话，控制台窗口可见')
+    except Exception as e:
+        print(f'  （会话检测失败: {type(e).__name__}: {e}）')
+
     # 4. 最新日志
     head('4. 最新日志')
     logs = sorted(glob.glob(os.path.join(UP, 'logs', 'DMR-2026*.log')),
@@ -177,6 +201,24 @@ def main():
         auto = '?'
     print(f'  AutoAdminLogon = {auto}'
           + ('（已关：重启后不会自动登录，必须靠计划任务）' if str(auto) == '0' else ''))
+    # AutoAdminLogon=1 不等于自动登录有效 —— 没有 DefaultPassword 时，
+    # 重启只会停在登录界面（2026-10-20 实测就是这个状态）。
+    if str(auto) == '1':
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                                r'SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon') as k:
+                winreg.QueryValueEx(k, 'DefaultPassword')
+            has_pw = True
+        except Exception:
+            has_pw = False
+        if has_pw:
+            print('  DefaultPassword = 已存储 ✅（重启会自动进桌面）')
+        else:
+            print('  DefaultPassword = 【缺失】⚠️ 重启会停在登录界面，自动登录实际是坏的！')
+            print('     修复：运行 netplwizard 取消勾选"要使用本计算机必须输入用户名和密码"，')
+            print('           或把密码写进注册表 DefaultPassword。')
+            problems.append('AutoAdminLogon=1 但没有 DefaultPassword —— 自动登录失效')
     state = ps("try { (Get-ScheduledTask -TaskName 'DanmakuRender_Boot' "
                "-ErrorAction Stop).State } catch { 'NOT_FOUND' }")
     if 'NOT_FOUND' in state or not state:
