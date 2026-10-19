@@ -77,6 +77,40 @@ class DmRender(BaseRender):
         return bool(name) and any(m in str(name).lower() for m in self._HW_ENCODER_MARKS)
 
     @staticmethod
+    def _is_framerate_error(info) -> bool:
+        """判断失败原因是不是「源帧率不可用，编码器拒绝启动」。
+
+        硬件编码器（尤其 QSV）拿不到有效帧率时会直接拒绝初始化编码器，
+        ffmpeg 的报错是：
+            [hevc_qsv] Current frame rate is unsupported
+            [hevc_qsv] some encoding parameters are not supported by the QSV runtime
+        这类错误**重试无效**（换几次都一样），必须显式给 -r 才能继续用硬件。
+        与 GPU 资源争抢要区分开，否则会白白重试 + 降级软件编码。
+        """
+        text = str(info or '').lower()
+        if not text:
+            return False
+        if 'frame rate is unsupported' in text:
+            return True
+        # 部分版本只报后一句，配合编码器名再确认一次
+        return ('not supported by the qsv runtime' in text
+                and 'frame rate' in text)
+
+    @staticmethod
+    def _hw_failure_hint(info) -> str:
+        """把失败原因翻译成一句人话，避免一律归咎于"GPU 被占用"。"""
+        text = str(info or '').lower()
+        if DmRender._is_framerate_error(info):
+            return ('源视频没有可用帧率（r_frame_rate=0/0），编码器直接拒绝启动；'
+                    '这类错误重试无用，补 -r 才能继续用硬件。')
+        if 'not supported by the qsv runtime' in text:
+            return '编码参数不被 QSV 接受（帧率/分辨率/像素格式异常）。'
+        if 'error while opening encoder' in text:
+            return '编码器初始化失败（参数不合法，或显卡驱动状态异常）。'
+        return ('GPU 编码会话被其他程序占用'
+                '（别的渲染任务、录屏、转码脚本等）。')
+
+    @staticmethod
     def _danmaku_last_timestamp(ass_path) -> float:
         """读 .ass 里最后一条 Dialogue 的时间戳（秒），失败返回 0。
 
@@ -304,8 +338,41 @@ class DmRender(BaseRender):
         # XML 弹幕先转成 ASS（本程序自录的 .ass 会原样返回，临时文件为 None）
         danmaku, temp_danmaku = self._prepare_danmaku(video.path, danmaku)
         start_time = datetime.now()
+        # 所有渲染调用（首次 / 帧率修正 / 硬件重试）共用这份参数副本，
+        # 修正过的参数才不会在重试时丢掉。
+        render_kwargs = dict(kwargs)
+        base_vencoder_args = render_kwargs.pop('vencoder_args', None)
+        if base_vencoder_args is None:
+            base_vencoder_args = list(self.vencoder_args)
+        else:
+            base_vencoder_args = list(base_vencoder_args)
         try:
-            status, info = self.render_helper(video.path, danmaku, output, **kwargs)
+            status, info = self.render_helper(video.path, danmaku, output, **render_kwargs)
+
+            # ── 源帧率不可用 → 补 -r 再上硬件（2026-10-19 新增）─────────────
+            # 实测：抖音某些 TS 分段的 r_frame_rate 是 0/0（只有 avg_frame_rate），
+            # ffmpeg 算不出输出帧率，hevc_qsv 直接抛
+            #   "Current frame rate is unsupported"
+            #   "some encoding parameters are not supported by the QSV runtime"
+            # 并拒绝启动编码器（return code -22）。
+            # 这跟 GPU 争抢无关，重试多少次都没用 —— 原来的逻辑会白等 2×60 秒，
+            # 最后还是降级到 libx265（实测吃满 6 个核、单分段渲染慢一倍以上）。
+            # 正确做法：显式给一个 -r（取值用 avg_frame_rate），硬件就能正常编码。
+            if (not status and self._is_hw_encoder(self.vencoder)
+                    and self._is_framerate_error(info)):
+                fps = FFprobe.get_fps(video.path)
+                if fps > 0:
+                    self.logger.warning(
+                        f'源视频没有可用帧率（r_frame_rate=0/0），'
+                        f'{self.vencoder} 拒绝编码。改用固定 {fps:g}fps 重试。')
+                    self._remove_quietly(output)
+                    render_kwargs['vencoder_args'] = (
+                        list(base_vencoder_args) + ['-r', f'{fps:g}'])
+                    status, info = self.render_helper(
+                        video.path, danmaku, output, **render_kwargs)
+                    if status:
+                        self.logger.info(
+                            f'补 -r {fps:g} 后硬件编码成功（{self.vencoder}）。')
 
             # ── 硬件编码重试 + 最后才降级软件（2026-10-18 新增）────────────
             # 起因：用户在后台跑双路批量渲染（都占 QSV），DMR 的 hevc_qsv
@@ -326,13 +393,12 @@ class DmRender(BaseRender):
                         f'硬件编码器 {self.vencoder} 渲染失败（第 {attempt}/'
                         f'{self.hw_retry} 次重试），{self.hw_retry_delay} 秒后'
                         f'再用硬件重试。\n'
-                        f'  常见原因：GPU 编码会话被其他程序占用'
-                        f'（别的渲染任务、录屏、转码脚本等）。\n'
+                        f'  原因判断：{self._hw_failure_hint(info)}\n'
                         f'  错误尾部: {str(info)[-300:]}')
                     self._remove_quietly(output)
                     time.sleep(self.hw_retry_delay)
                     status, info = self.render_helper(
-                        video.path, danmaku, output, **kwargs)
+                        video.path, danmaku, output, **render_kwargs)
                     if status:
                         self.logger.info(
                             f'硬件编码第 {attempt} 次重试成功（{self.vencoder}）。')
@@ -349,11 +415,13 @@ class DmRender(BaseRender):
                     f'  错误尾部: {str(info)[-300:]}')
                 # 清掉失败留下的残缺产物，避免 ffmpeg 因为文件已存在而拒绝
                 self._remove_quietly(output)
+                fallback_kwargs = dict(render_kwargs)
+                fallback_kwargs.pop('vencoder_args', None)
                 status, info = self.render_helper(
                     video.path, danmaku, output,
                     vencoder=self.fallback_vencoder,
                     vencoder_args=self.fallback_vencoder_args,
-                    **kwargs)
+                    **fallback_kwargs)
                 if status:
                     self.logger.info(
                         f'软件编码降级成功（{self.fallback_vencoder}）。'
