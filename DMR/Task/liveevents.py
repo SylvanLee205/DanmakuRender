@@ -762,7 +762,23 @@ class LiveEvents(BaseEvents):
                 return False
             return True
 
-        # 时长未知 → 用大小兜底
+        # 时长未知 → 用大小兜底。
+        # ⚠️ 2026-10-19 修：**渲染产物（mp4/mkv）不能走这个兜底**。
+        #    正常的 mp4 收尾时一定会写 moov，ffprobe 必然能读出时长；
+        #    读不出时长只有一种可能 —— 进程被中途杀掉、索引没落盘
+        #    （"moov atom not found"），也就是**坏文件**。
+        #    实测：17:22 那次重启把我自己正在跑的渲染杀了，留下 111MB
+        #    无索引的 mp4，这道兜底按"大小够"放行，直接传上了网盘。
+        # 只拦渲染产物（mp4/mov/m4v，本程序渲染固定输出 mp4）。
+        # 不拦 .mkv/.flv/.ts：那些是**录制**容器（历史上还有一批"假 mkv"=
+        # FLV 容器），收尾不规范、时长本来就常读不出，靠大小兜底是合理的。
+        _ext = os.path.splitext(str(getattr(video, 'path', '') or ''))[1].lower()
+        if _ext in ('.mp4', '.mov', '.m4v'):
+            self.logger.error(
+                f'视频{video.path}读不出时长（渲染产物缺索引，多半是被中途终止的'
+                f'残缺文件），跳过上传 —— 需要重新渲染。')
+            return False
+
         min_size_mb = self._min_valid_size_mb()
         size = getattr(video, 'size', None)
         if not size:
