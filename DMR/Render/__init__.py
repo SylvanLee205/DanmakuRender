@@ -199,8 +199,15 @@ class Render():
 
     def stop(self):
         self.stoped = True
-        for uuid, render in self._render_class.items():
-            render.stop()
+        # ⚠️ 2026-10-19：必须遍历快照。_render_subprocess 的 finally 会
+        #    self._render_class.pop(...)，直接遍历原字典会撞上
+        #    "dictionary changed size during iteration"，整个 stop() 抛异常 →
+        #    下面的 failed_tasks 落盘被跳过（重启后这些任务就丢了）。
+        for uuid, render in list(self._render_class.items()):
+            try:
+                render.stop()
+            except Exception as e:                            # noqa: BLE001
+                self.logger.warning(f'停止渲染器 {uuid} 时出错: {e}')
         self.render_executors.shutdown(wait=False)
         
         with self._lock:
