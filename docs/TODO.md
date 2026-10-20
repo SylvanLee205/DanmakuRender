@@ -332,3 +332,24 @@ session 0 的守护循环会兜底起一个（无窗口）实例，届时 Start_
 3. `11228ce`（上传闸门：mp4 读不出时长就拒绝上传）还没加载，下次重启生效。
 4. 两个孤儿 `[正在录制]*.ass`（灰蒙蒙 Part002 / 小鱼大王 Part000）建议挪隔离目录。
 5. 蓝屏根因（Arc 驱动）按之前结论处理：更新 Intel 显卡驱动。
+
+## 2026-10-20 09:15 更新：自动登录已修复 ✅
+
+用户已执行 reg add DefaultPassword（netplwizard 在 Server 上不显示自动登录勾选框，
+因为安全策略要求登录时按 Ctrl+Alt+Del，这是已知行为，改注册表是正规路径）。
+四要素已齐：AutoAdminLogon=1 / DefaultUserName=Administrator /
+DefaultDomainName=win-e462mto1sb0 / DefaultPassword 已存 / ForceAutoLogon=0。
+DMR-Status.bat 的"自动登录"行已变绿。
+
+### 重启验证清单（按顺序）
+1. 等开机通知或 1~2 分钟（避免 /admin 连太早撞上"正在登录"）；
+2. console 应自动登录，DMR 窗口（DanmakuRender_Guard）自动出现；
+3. `DMR-Status.bat`：[运行中] 2 个进程、[窗口] 在本会话、自动登录 ✅；
+4. Mac RDP 普通连接 Administrator → 应直接接管 console 桌面（若报 0x5，
+   等 1~2 分钟或给 .rdp 加 `administrative session:i:1`）；
+5. RustDesk/AnyDesk → 直接看到同一个桌面。
+
+### 仍未处理
+- `11228ce`（上传闸门）需下次重启才加载。
+- 两个孤儿 `[正在录制]*.ass`（灰蒙蒙 Part002 / 小鱼大王 Part000）。
+- 蓝屏根因：更新 Intel Arc 驱动。

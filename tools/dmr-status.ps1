@@ -13,13 +13,16 @@ Write-Host ('  ' + (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')) -ForegroundColor 
 Line
 
 # ---------- 1. 进程 ----------
-$procs = @(Get-Process python -ErrorAction SilentlyContinue)
+# 只数 DMR 主进程（main.py）—— session 0 的守护循环也是 python，
+# 数进来会把进程数和"已运行"时长都搞错。
+$procs = @(Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
+           Where-Object { $_.CommandLine -like '*main.py*' })
 if ($procs.Count -gt 0) {
-    $oldest = ($procs | Sort-Object StartTime | Select-Object -First 1).StartTime
+    $oldest = ($procs | Sort-Object CreationDate | Select-Object -First 1).CreationDate
     $up = (Get-Date) - $oldest
     Write-Host ('  [运行中]  ' + $procs.Count + ' 个进程   已运行 ' + $up.ToString('hh\:mm\:ss')) -ForegroundColor Green
 } else {
-    Write-Host '  [未运行]  没有 python 进程' -ForegroundColor Red
+    Write-Host '  [未运行]  没有 DMR 进程' -ForegroundColor Red
 }
 
 # ---------- 1b. 会话位置（窗口在不在你眼前）----------
