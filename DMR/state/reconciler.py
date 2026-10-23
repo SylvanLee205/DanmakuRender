@@ -38,7 +38,7 @@ import time
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from .enums import ArtifactState
+from .enums import ArtifactKind, ArtifactState
 from .repository import ArtifactRecord, SessionRecord, StateRepository
 
 logger = logging.getLogger(__name__)
@@ -373,6 +373,24 @@ class RecoveryManager:
             # A5/A6：稳定态只看正式路径是否存在
             if state in (ArtifactState.PLANNED,):
                 continue
+
+            # ⚠️⚠️ 例外（2026-10-18 修复）：dm_video 在 RECORDED 状态时，
+            # 文件**本来就不存在** —— 这是"已登记、尚未渲染"的正常状态，
+            # 不是丢失。
+            #
+            # 原实现会把它判成 MISSING，导致一个严重后果：
+            #   渲染失败（或产物被删）后重启 → dm_video 被标 missing →
+            #   MISSING 不在 RESUMABLE_STATES 里 → **永远不会再被渲染**。
+            # 实测事故：断尾人类 2026-10-18 22:52 的分段渲染失败（QSV 争抢），
+            # 重启后 dm_video 被标 missing，恢复流程"已重新派发 0 个任务"，
+            # 那一段就永久没有弹幕版了。
+            #
+            # src_video 在 RECORDED 时文件必须存在（源丢了才是真问题），
+            # 所以只对 dm_video 放行。
+            if (artifact.kind is ArtifactKind.DANMAKU_VIDEO
+                    and state is ArtifactState.RECORDED):
+                continue
+
             if self._exists(artifact.path):
                 continue
             self.repo.set_artifact_state(
@@ -405,8 +423,18 @@ class RecoveryManager:
         #    注意：只有**正式路径**上的文件才能这样直接恢复 —— 独立的 .part 即使
         #    能被解析，也仍然只是"可能没写完"的中间产物，必须按用户策略处置（见 ②）。
         if has_final and self._is_valid(artifact.path):
+            # 顺手把弹幕文件补上：中途被杀的分段，视频可能已经写成正式名，
+            # 但 danmaku_path 还是 null —— 不补的话这段永远不会被派发渲染。
+            _dm = artifact.danmaku_path
+            if not _dm and part and part != artifact.path:
+                _dm = self._promote_sidecar(part, artifact.path)
+            if not _dm:
+                _cand = os.path.splitext(artifact.path)[0] + '.ass'
+                if os.path.exists(_cand):
+                    _dm = _cand
             self.repo.set_artifact_path(artifact.artifact_id,
-                                        path=artifact.path, part_path=None)
+                                        path=artifact.path, part_path=None,
+                                        danmaku_path=_dm)
             self.repo.set_artifact_state(artifact.artifact_id,
                                          ArtifactState.RECORDED)
             report.interrupted.append(
@@ -491,9 +519,12 @@ class RecoveryManager:
             final_path = artifact.path or self._derive_final_path(part)
             if self._promote(part, final_path):
                 size, duration = self._probe_size_duration(final_path)
+                # 弹幕文件一起转正，并写进 danmaku_path —— 否则这段视频
+                # 永远不会被派发渲染（下游要求必须有弹幕文件）。
+                dm_final = self._promote_sidecar(part, final_path)
                 self.repo.set_artifact_path(
                     artifact.artifact_id, path=final_path, part_path=None,
-                    size=size, duration=duration,
+                    size=size, duration=duration, danmaku_path=dm_final,
                 )
                 self.repo.set_artifact_state(artifact.artifact_id,
                                              ArtifactState.RECORDED)
@@ -619,6 +650,32 @@ class RecoveryManager:
             return part_path[: -len(".part")]
         root, ext = os.path.splitext(part_path)
         return root if ext == ".part" else part_path + ".promoted"
+
+    @staticmethod
+    def _promote_sidecar(part: str, final: str) -> str | None:
+        """把中断分段的**弹幕文件**一起改名到最终名，返回新路径（没有则 None）。
+
+        为什么需要（2026-10-19 实测）：kill 掉正在录制的分段后，状态库里
+        `danmaku_path` 一直是 null；`_promote` 只转了视频，于是下游
+        `_dispatch_pending_renders`（要求"必须有存在的弹幕文件"）直接跳过这段，
+        视频永远停在 recorded —— 等于这段录播**没有弹幕版**，还不报错。
+        """
+        if not part or not final:
+            return None
+        part_stem = os.path.splitext(part)[0]
+        final_stem = os.path.splitext(final)[0]
+        for ext in ('.ass', '.xml'):
+            src = part_stem + ext
+            if not os.path.exists(src):
+                continue
+            dst = final_stem + ext
+            try:
+                if os.path.abspath(src) != os.path.abspath(dst):
+                    os.replace(src, dst)
+                return dst
+            except OSError:
+                logger.debug("弹幕文件转正失败：%s -> %s", src, dst, exc_info=True)
+        return None
 
     @staticmethod
     def _promote(part_path: str, final_path: str) -> bool:

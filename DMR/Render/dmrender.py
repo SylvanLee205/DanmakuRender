@@ -3,6 +3,7 @@ import logging
 import os
 import platform
 import tempfile
+import time
 
 from .baserender import BaseRender
 from .ffmpeg import RawFFmpegRender
@@ -22,6 +23,10 @@ class DmRender(BaseRender):
                  gop_multiplier=None,
                  gop_default_fps: float = 30,
                  ffmpeg: str = None,
+                 fallback_vencoder: str = 'libx265',
+                 fallback_vencoder_args: list = None,
+                 hw_retry: int = 2,
+                 hw_retry_delay: float = 60,
                  debug=False,
                  **kwargs
                  ):
@@ -38,12 +43,104 @@ class DmRender(BaseRender):
         # None/0/False/'off' 时不干预，交给编码器默认；'auto' 等价于 8。
         self.gop_multiplier = self._parse_gop_multiplier(gop_multiplier)
         self.gop_default_fps = float(gop_default_fps or 30)
+        # ── 硬件编码失败时的软件编码降级（2026-10-18 新增）──────────────
+        # 起因：用户在后台跑双路批量渲染（都占 QSV），DMR 的 hevc_qsv 渲染
+        # 在 33:47 报 Invalid FrameType:0 / -1094995529 直接失败，留下残缺产物。
+        # 实测：同样的文件在 GPU 空闲时 4 种编码方案全部成功 —— 这是**资源争抢**，
+        # 不是素材损坏。
+        # 做法：硬件编码器（*_qsv / *_nvenc / *_vaapi / *_amf）渲染失败时，
+        # 自动用软件编码器重试一次。正常情况下仍走硬件（快 2 倍+）。
+        # 设为 None 或空串可关闭降级。
+        self.fallback_vencoder = (fallback_vencoder or '').strip() or None
+        if fallback_vencoder_args is None:
+            # 实测对比（60 秒片段，同一素材）：
+            #   QSV medium gq30      7.0 MB / 958 kbps / 12.7s   ← 当前配置
+            #   libx265 veryfast crf28  7.7 MB / 1053 kbps / 22.3s (1.8x)
+            #   libx265 medium  crf30   6.4 MB /  879 kbps / 36.4s (2.9x)
+            # 取 veryfast+crf28：体积只比硬件大 10%，速度只慢 1.8 倍。
+            fallback_vencoder_args = ['-preset', 'veryfast', '-crf', '28', '-tag:v', 'hvc1']
+        self.fallback_vencoder_args = list(fallback_vencoder_args)
+        # 硬件编码重试（用户要求：尽量硬解硬编，实在不行再软编码）
+        self.hw_retry = max(0, int(hw_retry or 0))
+        self.hw_retry_delay = max(0.0, float(hw_retry_delay or 0))
         self.ffmpeg = ffmpeg if ffmpeg else ToolsList.get('ffmpeg')
         self.debug = debug
 
         self.logger = logging.getLogger(__name__)
         self._check_encoder_args()
         self.raw_ffmpeg = RawFFmpegRender(debug=self.debug)
+
+    #: 这些后缀的编码器属于硬件加速，可能因为会话被占用而失败
+    _HW_ENCODER_MARKS = ('_qsv', '_nvenc', '_vaapi', '_amf', '_videotoolbox')
+
+    def _is_hw_encoder(self, name: str) -> bool:
+        return bool(name) and any(m in str(name).lower() for m in self._HW_ENCODER_MARKS)
+
+    @staticmethod
+    def _is_framerate_error(info) -> bool:
+        """判断失败原因是不是「源帧率不可用，编码器拒绝启动」。
+
+        硬件编码器（尤其 QSV）拿不到有效帧率时会直接拒绝初始化编码器，
+        ffmpeg 的报错是：
+            [hevc_qsv] Current frame rate is unsupported
+            [hevc_qsv] some encoding parameters are not supported by the QSV runtime
+        这类错误**重试无效**（换几次都一样），必须显式给 -r 才能继续用硬件。
+        与 GPU 资源争抢要区分开，否则会白白重试 + 降级软件编码。
+        """
+        text = str(info or '').lower()
+        if not text:
+            return False
+        if 'frame rate is unsupported' in text:
+            return True
+        # 部分版本只报后一句，配合编码器名再确认一次
+        return ('not supported by the qsv runtime' in text
+                and 'frame rate' in text)
+
+    @staticmethod
+    def _hw_failure_hint(info) -> str:
+        """把失败原因翻译成一句人话，避免一律归咎于"GPU 被占用"。"""
+        text = str(info or '').lower()
+        if DmRender._is_framerate_error(info):
+            return ('编码器收到的帧率不是有效值（0/1，或 SPS 里声明的假帧率），'
+                    'QSV 直接拒绝初始化；这类错误重试无用，补 -r 才能继续用硬件。')
+        if 'not supported by the qsv runtime' in text:
+            return '编码参数不被 QSV 接受（帧率/分辨率/像素格式异常）。'
+        if 'error while opening encoder' in text:
+            return '编码器初始化失败（参数不合法，或显卡驱动状态异常）。'
+        return ('GPU 编码会话被其他程序占用'
+                '（别的渲染任务、录屏、转码脚本等）。')
+
+    @staticmethod
+    def _danmaku_last_timestamp(ass_path) -> float:
+        """读 .ass 里最后一条 Dialogue 的时间戳（秒），失败返回 0。
+
+        ⚠️ 为什么用它做时长参考（2026-10-18）：
+            抖音的 FLV 流经常有时间戳跳变，导致录制文件的**容器时长被虚报**。
+            实测：断尾人类 22:52 的分段实际只有 38 分钟，
+            但 ffprobe 的 format.duration 报 13065 秒（217 分钟，虚报 5.7 倍）。
+            如果用源容器时长做校验基准，正常的 38 分钟产物会被判成 17.7% 残缺。
+            弹幕是按真实时间写的，最后一条 Dialogue 的时间戳 ≈ 分段真实时长，
+            对本流水线来说是最可靠的参考。
+        """
+        if not ass_path:
+            return 0.0
+        try:
+            last = 0.0
+            pat = re.compile(r'^Dialogue:[^,]*,'
+                             r'(\d+):(\d+):(\d+)\.(\d+)')
+            with open(str(ass_path), 'r', encoding='utf-8', errors='replace') as f:
+                for line in f:
+                    m = pat.match(line)
+                    if not m:
+                        continue
+                    h, mi, sec, cs = (int(m.group(1)), int(m.group(2)),
+                                      int(m.group(3)), int(m.group(4)))
+                    ts = h * 3600 + mi * 60 + sec + cs / 100.0
+                    if ts > last:
+                        last = ts
+            return last
+        except Exception:
+            return 0.0
 
     _QUALITY_ARGS = ('-global_quality', '-qp', '-qscale', '-crf', '-cq', '-qmin', '-qmax')
 
@@ -161,7 +258,16 @@ class DmRender(BaseRender):
         except OSError as e:
             self.logger.debug(f'清理临时弹幕文件 {path} 失败: {e}')
 
-    def render_helper(self, video: str, danmaku: str, output: str, to_stdout: bool = False, logfile=None):
+    def render_helper(self, video: str, danmaku: str, output: str, to_stdout: bool = False, logfile=None,
+                      vencoder: str = None, vencoder_args: list = None):
+        """渲染单个视频。
+
+        ``vencoder`` / ``vencoder_args`` 为空时用实例配置；
+        软件编码降级时会显式传入替代编码器（见 ``_try_software_fallback``）。
+        """
+        vencoder = vencoder or self.vencoder
+        vencoder_args = list(vencoder_args) if vencoder_args is not None else self.vencoder_args
+
         ffmpeg_args = [self.ffmpeg, '-y']
         ffmpeg_args += self.hwaccel_args
 
@@ -193,18 +299,28 @@ class DmRender(BaseRender):
         
         ffmpeg_args += [
             '-fflags', '+discardcorrupt+genpts',
-            '-analyzeduration', '2147483647', '-probesize', '2147483647',
+            # ⚠️ 2026-10-19 修：这两个值原来是 2147483647（INT_MAX），把 TS 渲染
+            #    推给了 QSV 一个 2000fps 的假帧率。实测链路：
+            #      -analyzeduration=INT_MAX 让 ffmpeg 一直探测到文件末尾；
+            #      TS 没有逐包时长，扫完就丢掉"按时间戳量出来的 22fps"，
+            #      改用 SPS 里声明的 time_scale/num_units_in_tick = 2000/1；
+            #      而该流 SPS 同时写着 fixed_frame_rate_flag=0（变帧率），
+            #      2000fps 纯属编码器没填好 → QSV 报 Current frame rate is
+            #      unsupported 并拒绝初始化编码器（-22）。
+            #    同样内容装进 flv/mkv 就没事（逐包有时间戳），所以跟容器也有关。
+            #    限制成有限值即可，20 秒内就能探测完，实测 tbr 恢复 22。
+            '-analyzeduration', '60000000', '-probesize', '100000000',
             '-i', video,
             filter_name, filter_str,
 
-            '-c:v', self.vencoder,
+            '-c:v', vencoder,
             # GOP（关键帧间隔）自动设置：gop_multiplier = N 时 -g = round(源帧率 × N)。
             # ⚠️ 2026-10-15 复查发现：合并上游时这个调用点漏了，
             #    导致 gop_multiplier=8 的配置**完全没生效**（方法定义了但没人调）。
             #    放在 -c:v 之后、用户 vencoder_args 之前 —— 这样若用户在
             #    vencoder_args 里自己写了 -g，会覆盖我们的值（符合预期）。
             *self._build_gop_args(video),
-            *self.vencoder_args,
+            *vencoder_args,
             '-c:a', self.aencoder,
             *self.aencoder_args,
             *scale_args,
@@ -216,6 +332,10 @@ class DmRender(BaseRender):
     def render_one(self, video: VideoInfo, output: str, **kwargs):
         if not exists(video.path):
             raise RuntimeError(f'不存在视频文件 {video.path}，跳过渲染.')
+        # 把源时长交给渲染器，供"卡死超时"计算（否则超时会退化成一个固定值，
+        # 长分段/软编码降级会被误杀）。必须在每次 render_helper 之前设置：
+        # 硬件重试与降级复用同一个 raw_ffmpeg，值会一直有效。
+        self.raw_ffmpeg.set_source(video, video.path)
         danmaku = kwargs.get('danmaku') or video.dm_file_id
         if not danmaku or not exists(danmaku):
             raise RuntimeError(f'不存在弹幕文件 {danmaku}，跳过渲染.')
@@ -228,8 +348,99 @@ class DmRender(BaseRender):
         # XML 弹幕先转成 ASS（本程序自录的 .ass 会原样返回，临时文件为 None）
         danmaku, temp_danmaku = self._prepare_danmaku(video.path, danmaku)
         start_time = datetime.now()
+        # 所有渲染调用（首次 / 帧率修正 / 硬件重试）共用这份参数副本，
+        # 修正过的参数才不会在重试时丢掉。
+        render_kwargs = dict(kwargs)
+        base_vencoder_args = render_kwargs.pop('vencoder_args', None)
+        if base_vencoder_args is None:
+            base_vencoder_args = list(self.vencoder_args)
+        else:
+            base_vencoder_args = list(base_vencoder_args)
+        # 放回 kwargs：首次调用 / 硬件重试都用同一份编码参数。
+        # （原来 pop 掉之后没放回，首次和重试都退回 self.vencoder_args，
+        #   调用方传进来的 vencoder_args 会被悄悄丢掉。）
+        render_kwargs['vencoder_args'] = base_vencoder_args
         try:
-            status, info = self.render_helper(video.path, danmaku, output, **kwargs)
+            status, info = self.render_helper(video.path, danmaku, output, **render_kwargs)
+
+            # ── 编码器拿不到可用帧率 → 补 -r 再上硬件（2026-10-19 新增）─────
+            # 现象：hevc_qsv 抛
+            #   "Current frame rate is unsupported"
+            #   "some encoding parameters are not supported by the QSV runtime"
+            # 并拒绝启动编码器（return code -22）。
+            # 真正原因是编码器拿到的帧率是 0/1 或 2000/1，不是"VFR 不支持"
+            # （QSV 本身能编 VFR，实测变帧率输入正常出片）。
+            # 上面已把 -analyzeduration 从 INT_MAX 收窄，正常不会再触发；
+            # 这里保留兜底：万一别的上游喂来 0/1，就显式给一个 -r 重走硬件。
+            # 补 -r 会强制 CFR（会按 22fps 补帧），所以只在真失败时才做。
+            if (not status and self._is_hw_encoder(self.vencoder)
+                    and self._is_framerate_error(info)):
+                fps = FFprobe.get_fps(video.path)
+                if fps > 0:
+                    self.logger.warning(
+                        f'编码器收到的帧率不可用（0/1 或异常值），'
+                        f'{self.vencoder} 拒绝编码。改用固定 {fps:g}fps 重试。')
+                    self._remove_quietly(output)
+                    render_kwargs['vencoder_args'] = (
+                        list(base_vencoder_args) + ['-r', f'{fps:g}'])
+                    status, info = self.render_helper(
+                        video.path, danmaku, output, **render_kwargs)
+                    if status:
+                        self.logger.info(
+                            f'补 -r {fps:g} 后硬件编码成功（{self.vencoder}）。')
+
+            # ── 硬件编码重试 + 最后才降级软件（2026-10-18 新增）────────────
+            # 起因：用户在后台跑双路批量渲染（都占 QSV），DMR 的 hevc_qsv
+            # 渲染报 Invalid FrameType:0 / -1094995529 并留下残缺产物。
+            # 实测：GPU 空闲时 4 种编码方案（含纯 qsv）全部成功；而且同一晚
+            # 23:08 在两个批量进程都在跑的情况下，DMR 的 QSV 渲染又成功了
+            # —— 说明这不是"会话数硬上限"，而是**间歇性**的资源争抢。
+            #
+            # 所以策略是「硬件优先」：
+            #   1. 硬件编码失败 → 等 hw_retry_delay 秒后**再用硬件重试**，
+            #      最多 hw_retry 次（默认 2 次）—— 间歇性争抢往往重试就过
+            #   2. 全部硬件尝试都失败 → 才降级到软件编码（libx265），只降一次
+            # 用户明确要求：尽量硬解硬编，实在不行再软编码。
+            if (not status and self._is_hw_encoder(self.vencoder)
+                    and self.hw_retry > 0):
+                for attempt in range(1, self.hw_retry + 1):
+                    self.logger.warning(
+                        f'硬件编码器 {self.vencoder} 渲染失败（第 {attempt}/'
+                        f'{self.hw_retry} 次重试），{self.hw_retry_delay} 秒后'
+                        f'再用硬件重试。\n'
+                        f'  原因判断：{self._hw_failure_hint(info)}\n'
+                        f'  错误尾部: {str(info)[-300:]}')
+                    self._remove_quietly(output)
+                    time.sleep(self.hw_retry_delay)
+                    status, info = self.render_helper(
+                        video.path, danmaku, output, **render_kwargs)
+                    if status:
+                        self.logger.info(
+                            f'硬件编码第 {attempt} 次重试成功（{self.vencoder}）。')
+                        break
+
+            # 硬件彻底不行 → 软件编码兜底（只降级一次）
+            if (not status and self.fallback_vencoder
+                    and self._is_hw_encoder(self.vencoder)
+                    and self.fallback_vencoder != self.vencoder):
+                self.logger.warning(
+                    f'硬件编码器 {self.vencoder} 重试 {self.hw_retry} 次仍失败，'
+                    f'降级到软件编码器 {self.fallback_vencoder}。\n'
+                    f'  软件编码会明显更慢，建议排查是什么长期占用 GPU。\n'
+                    f'  错误尾部: {str(info)[-300:]}')
+                # 清掉失败留下的残缺产物，避免 ffmpeg 因为文件已存在而拒绝
+                self._remove_quietly(output)
+                fallback_kwargs = dict(render_kwargs)
+                fallback_kwargs.pop('vencoder_args', None)
+                status, info = self.render_helper(
+                    video.path, danmaku, output,
+                    vencoder=self.fallback_vencoder,
+                    vencoder_args=self.fallback_vencoder_args,
+                    **fallback_kwargs)
+                if status:
+                    self.logger.info(
+                        f'软件编码降级成功（{self.fallback_vencoder}）。'
+                        f'建议排查是什么占用了 GPU，否则每次渲染都要多花一倍时间。')
         finally:
             # 必须等 ffmpeg 渲染结束才能删：subtitles 滤镜是在渲染期间读这个文件的
             self._remove_quietly(temp_danmaku)
@@ -263,6 +474,71 @@ class DmRender(BaseRender):
             output_info.ctime = start_time
             output_info.dm_file_id = None
             output_info.src_video_id = video.file_id
+
+            # ── 时长一致性校验（2026-10-18 新增）──────────────────────────
+            # 起因：断尾人类 2026-10-18 19:56 的分段，源视频 3791.6 秒、
+            # 但渲染产物只有 2027.3 秒（53%）—— 因为源流在中途时间戳损坏，
+            # hevc_qsv 遇到坏帧直接放弃（Invalid FrameType:0 / -1094995529）。
+            # ffmpeg 退出码非 0 时上游会上报失败，但**产物已经留在磁盘上**，
+            # 体积有 270MB，逃过了"0 字节保险闸"，看起来像个正常产物。
+            # 严重性：下游会上传这个残缺视频，且清理规则会删掉源视频 ——
+            # 那一段录播就永久变成残缺品了。
+            #
+            # 这里比较"产物时长 vs 源视频时长"，短太多就判定为失败。
+            # 阈值取 90%：正常渲染的时长误差在 1% 以内（弹幕不影响时长），
+            # 90% 足够宽松，不会误杀正常的结尾裁剪。
+            # 任何异常都只记日志、不影响原有判定（fail-open）。
+            try:
+                # 参考时长优先级：
+                #   1) 弹幕最后时间戳 —— 最可靠（FLV 容器时长会虚报，见辅助方法注释）
+                #   2) VideoInfo.duration
+                #   3) ffprobe 读源文件
+                ref_dur = self._danmaku_last_timestamp(danmaku)
+                if ref_dur > 0:
+                    src_dur = ref_dur
+                    ref_src = '弹幕最后时间戳'
+                else:
+                    src_dur = float(getattr(video, 'duration', 0) or 0)
+                    if src_dur <= 0:
+                        src_dur = float(FFprobe.get_duration(video.path) or 0)
+                    ref_src = '源文件容器时长'
+                out_dur = float(FFprobe.get_duration(output) or 0)
+
+                # ⚠️⚠️ 2026-10-19 修漏洞：产物**读不出时长**必须当失败。
+                #    原来写的是 `if src_dur > 0 and out_dur > 0`，
+                #    于是 out_dur 为 0 时整个校验**静默跳过**。
+                #    而这恰恰是坏文件的特征：mp4 被中途杀掉时 `moov` 索引
+                #    根本没写进去 → 播放器报 "moov atom not found"，
+                #    ffprobe 也读不出时长 → 被当成正常产物上传。
+                #    实测事故：哭哭不嘻嘻 03:39 的弹幕版（59.3 MB）本地和网盘都播不了。
+                if out_dur <= 0:
+                    try:
+                        _sz = os.path.getsize(output)
+                    except OSError:
+                        _sz = 0
+                    self.logger.error(
+                        f'渲染产物无法读取时长（{output}，{_sz/1024**2:.1f} MB），'
+                        f'判定为失败。通常是 ffmpeg 被中途杀掉导致 moov 索引未写入。')
+                    return False, (
+                        f'渲染产物不可读（moov 缺失 / 文件未收尾，'
+                        f'{_sz/1024**2:.1f} MB）。ffmpeg 输出尾部:\n{str(info)[-800:]}')
+
+                if src_dur > 0 and out_dur > 0:
+                    ratio = out_dur / src_dur
+                    if ratio < 0.90:
+                        try:
+                            os.remove(output)
+                        except Exception as e:
+                            self.logger.warning(f'删除残缺产物失败 {output}: {e}')
+                        return False, (
+                            f'渲染产物时长异常：{ref_src} {src_dur:.0f} 秒 → 产物仅 '
+                            f'{out_dur:.0f} 秒（{ratio*100:.0f}%），已删除（源视频保留）。\n'
+                            f'通常是**源视频本身损坏**（录制期间流时间戳错乱），'
+                            f'导致编码器中途放弃。ffmpeg 输出尾部:\n'
+                            f'{str(info)[-800:]}')
+            except Exception as e:
+                self.logger.debug(f'时长校验跳过（不影响渲染结果）: {e}')
+
             return status, output_info
         else:
             return status, info

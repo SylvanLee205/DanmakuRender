@@ -341,6 +341,37 @@ class StateRepository:
             self.conn.execute("DELETE FROM sessions WHERE session_id=?", (session_id,))
             self.conn.commit()
 
+    def purge_task(self, taskname: str) -> dict:
+        """彻底清理某个任务的全部状态（场次 + 产物 + 上传组）。
+
+        用途（2026-10-19）：临时测试任务验证完删掉配置后，
+        库里残留的记录会让一致性检查拒绝启动。
+
+        为什么不靠外键级联：``delete_session`` 的 docstring 写着“级联删除其产物”，
+        但实际只 DELETE 了 sessions 行 —— 是否级联取决于 schema 里有没有
+        ``ON DELETE CASCADE`` 且 ``PRAGMA foreign_keys=ON``。这里显式删，不依赖隐式行为。
+
+        :returns: ``{'sessions': n, 'artifacts': m, 'upload_groups': k}``
+        """
+        counts = {'sessions': 0, 'artifacts': 0, 'upload_groups': 0}
+        with self._lock:
+            rows = self.conn.execute(
+                'SELECT session_id FROM sessions WHERE taskname=?', (taskname,)
+            ).fetchall()
+            sids = [r['session_id'] for r in rows]
+            for sid in sids:
+                cur = self.conn.execute(
+                    'DELETE FROM artifacts WHERE session_id=?', (sid,))
+                counts['artifacts'] += cur.rowcount or 0
+            cur = self.conn.execute(
+                'DELETE FROM sessions WHERE taskname=?', (taskname,))
+            counts['sessions'] = cur.rowcount or 0
+            cur = self.conn.execute(
+                'DELETE FROM upload_groups WHERE taskname=?', (taskname,))
+            counts['upload_groups'] = cur.rowcount or 0
+            self.conn.commit()
+        return counts
+
     # ------------------------------------------------------------------ 产物
 
     def _raw_payload(self, artifact_id: str) -> dict:

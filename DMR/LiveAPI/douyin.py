@@ -146,7 +146,11 @@ class douyin(BaseAPI):
         }
         self.headers = douyin_utils.get_headers()
         url = douyin_utils.build_request_url(url, query=params)
-        text = self.sess.get(url, headers=self.headers, params=params, timeout=5).text
+        # 2026-10-23：5 秒 → 10 秒。实测 5 秒偏短，抖音侧一慢就 ReadTimeout，
+        # 而这个异常发生在 StreamDownloadTask 构造瞬间，会直接让该主播本次开播
+        # 录不到（Downloader.newtask 抛异常 → 消息被丢弃）。配合 newtask 的
+        # 自动重试（30/60/90 秒）使用，误重启风险可控。
+        text = self.sess.get(url, headers=self.headers, params=params, timeout=10).text
         data = json.loads(text)['data']
         return data
 

@@ -78,6 +78,8 @@ class Transcoder(BaseRender):
             output = valid_output   
 
         start_time = datetime.now()
+        # 同 dmrender：登记源时长，避免超时退化成固定值误杀长视频
+        self.raw_ffmpeg.set_source(video, video.path)
         status, info = self.render_helper(video.path, output, **kwargs)
         if status:
             output_info:VideoInfo = copy.deepcopy(video)

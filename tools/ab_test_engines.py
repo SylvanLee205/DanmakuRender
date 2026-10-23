@@ -2,7 +2,7 @@
 
 用法：
     # 指定一个正在直播的抖音房间
-    python tools\ab_test_engines.py --url https://live.douyin.com/123456789 --seconds 60
+    python tools\ab_test_engines.py --url https://live.douyin.com/56909717876 --seconds 60
 
     # 或者让脚本自己从 configs 里找一个在播的主播
     python tools\ab_test_engines.py --seconds 60

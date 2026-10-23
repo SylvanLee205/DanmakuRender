@@ -1,57 +1,49 @@
-/.**
+﻿# ── 生产目录专用 .gitignore ──────────────────────────────────────────
+# 目的：只把**代码**纳入版本控制，用于"改动前后对比 / 回滚"。
+# 运行时产物、用户配置、视频、虚拟环境全部排除。
 
-# 上面的 /.** 会连 .gitignore / .dockerignore 自己一起忽略掉（导致它们无法被提交），
-# 这里用 ! 显式豁免回来。注意顺序：必须放在 /.** 之后才生效。
-!/.gitignore
-!/.dockerignore
-
-/直播回放**
+# 运行时产物
 /logs/
-/venv/
-/test**
-/视频下载**
-输出/
+/.temp/
+/直播回放/
+/__pycache__/
+*.pyc
 
-# 敏感信息：绝对不要提交到 GitHub
+# 用户个人配置（绝不入库）
+/configs/
+global.ymal
+global.yaml
 rclone.conf
 .login_info/
+/login_info/
 
-*.7z
-replay-**.yml
-DMR-**.yml
-**.exe
-**.pyc
-**.mp4
-**.png
-**.log
-**.flv
-**.json
-**.ass
-**.xml
-\-*
+# 虚拟环境与工具二进制
+/.venv/
+*.exe
+*.dll
 
+# 媒体文件
+*.mp4
+*.mkv
+*.flv
+*.ass
+*.xml
+*.png
+*.jpg
 
-# ── 机器专属的临时备份（不该进仓库）─────────────────────────
-#  这些是本地排错/改配置时留下的快照，对别人没有意义，
-#  而且里面带着本机绝对路径（F:\DanmakuRender...）。
-#  ⚠️ 为什么需要显式排除：configs/global*.yml 本身已被忽略，
-#     但 global.yml.bak-20261015-190844 这类**后缀变了**的文件
-#     不会被 global*.yml 匹配到，曾经漏进仓库 9 个。
+# 日志与备份
+*.log
 *.bak
 *.bak2
 *.bak-*
-*.bak2-*
 *.backup
 *.old
-*~
 /backups/
+/_*
+notify_content.txt
+notify_title.txt
+# 历史同步备份目录
+.backup-sync-*/
 
-# ⚠️ 重要：configs/global.yml 是**用户个人配置**（含上传路径、跳过规则、
-#    网盘参数），绝不能发布。它曾经被 git 跟踪，所以原有的 global*.yml
-#    规则对它**不生效**（.gitignore 只忽略未跟踪文件）。
-#    2026-10-16 发布 v5.1.0 时发现它漏进了源码包，已 git rm --cached。
-configs/global.yml
-configs/global.ymal
-configs/*.bak
-configs/*.bak2
-*.BROKEN-*
+# 隔离区（停用主播时的暂存，内容因人而异，绝不入库）
+/.trash/

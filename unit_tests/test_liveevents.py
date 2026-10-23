@@ -410,7 +410,9 @@ class TestArtifactSemantics(DMRTestCase):
 
         self.assertEqual(len(messages), 1)
         paths = [str(f.path) for f in messages[0].data["files"]]
-        self.assertIn("dm.mp4", paths)
+        # 2026-10-19 用户硬性要求：弹幕版永不清理。
+        # 即使配置里没写 w_dmfile: False（这里故意不写），dm 也不能进清理列表。
+        self.assertNotIn("dm.mp4", paths, "弹幕版绝不进清理任务")
         self.assertIn("src.mp4", paths, "w_srcfile=True 时应连带清理源视频")
 
 

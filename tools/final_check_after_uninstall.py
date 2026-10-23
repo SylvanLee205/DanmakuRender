@@ -124,4 +124,6 @@ print('                          |')
 print('                          `- CloudDrive2 服务版 (SYSTEM, 19798, 服务自愈)')
 print('                               `- 百度网盘 /百度网盘/DMR录播/<任务>/')
 print()
-print('  远程访问: http://100.x.y.z:19798/  (Tailscale, 管理界面无认证)')
+# 公开仓库不写死内网地址：用环境变量注入，缺省显示占位符。
+_ts_ip = os.environ.get('DMR_TAILSCALE_IP') or '<你的 Tailscale IP>'
+print('  远程访问: http://%s:19798/  (Tailscale, 管理界面无认证)' % _ts_ip)

@@ -103,6 +103,26 @@ def _startup_recover(config, logger, enabled=True, wait=False, min_age_minutes=2
         return None
 
     def _job():
+        # ── 第一步：ffmpeg 引擎遗留的分段（无 .part，需改名接管）──────
+        # ⚠️ 2026-10-18 新增：切到 engine=ffmpeg 后，崩溃/重启会留下
+        # `[正在录制]<主播>-<YYYYMMDD-HHMMSS>-PartNNN.<ts|mkv|mp4>`。
+        # ffmpeg 的 segment 是流式写的，这些文件**本身可用**（TS 尤其如此，
+        # 实测截断到 50% 后 ffprobe 报的时长准确、能完整解码），
+        # 所以不需要像 biliup 的 .part 那样去"修复"，只要改名入库即可。
+        # 必须在 recover_part 之前跑：recover_part 只认 `.part`，认不出这些。
+        try:
+            from tools.recover_ffmpeg_segments import recover_all as _ff_recover
+            _ff = _ff_recover(config, min_age_minutes=min_age_minutes,
+                              apply_changes=True, logger=logger)
+            if _ff.get("scanned"):
+                logger.info(
+                    f"ffmpeg 分段恢复：扫描 {_ff['scanned']} / "
+                    f"成功 {len(_ff['recovered'])} / 失败 {len(_ff['failed'])}"
+                )
+        except Exception as e:
+            logger.warning(f"ffmpeg 分段恢复跳过（不影响正常录制）: "
+                           f"{type(e).__name__}: {e}")
+
         try:
             from tools.recover_part import recover_all
             res = recover_all(cfg=config, min_age_minutes=min_age_minutes,
@@ -210,6 +230,15 @@ def _verify_configs(config, logger):
                                 cur.add(os.path.relpath(os.path.join(root, f),
                                                         'configs'))
                         lost = sorted(set(man.get('files', {})) - cur)
+                        # ⚠️ 2026-10-19：快照里可能残留 .bak/.tmp/编辑器临时文件
+                        #    （旧版 backup_configs 会收录它们）。这些不是"配置丢失"，
+                        #    否则每次启动都会报一条假 ERROR，把真正的告警淹掉。
+                        #    实测：DMR-灰蒙蒙.yml.bak-20261018-223751 被清理后，
+                        #    启动自检连续报「丢失 1 个配置」。
+                        lost = [x for x in lost
+                                if not ('.bak' in x.lower() or x.endswith('~')
+                                        or x.lower().endswith('.tmp')
+                                        or x.lower().endswith('.swp'))]
                         if lost:
                             logger.error('  ❌ 相比快照 %s 丢失 %d 个配置:',
                                          snaps[-1], len(lost))
@@ -229,6 +258,101 @@ def _verify_configs(config, logger):
         # 校验本身绝不能影响启动
         try:
             logger.debug(f'配置校验过程出错（不影响启动）: {type(e).__name__}: {e}')
+        except Exception:
+            pass
+
+
+def _verify_pipeline_switches(config, logger):
+    """启动自检：检查每个任务的"自动化开关"，防止它们被静默翻转。
+
+    ⚠️ 为什么需要（真实风险）：
+        每个任务配置里的 common_event_args 控制整条流水线：
+            auto_render  录完是否自动渲染
+            auto_upload  渲染完是否自动上传
+            auto_clean   上传完是否自动清理
+
+        这些开关**没有任何保护** —— 一旦配置被覆盖（比如把 Mod 的配置
+        同步到生产，而 Mod 里 auto_upload=False），流水线就会**静默停掉**：
+        不报错、不警告、日志里一切正常，只是录播永远堆在本地不出去。
+        等发现时往往已经攒了几天几十 GB。
+
+        本函数在每次启动时把有效值打印出来，并在明显异常时给出醒目警告，
+        让"上传被关掉"这件事**不可能被忽略**。
+
+    判断逻辑：
+        auto_upload 全为 False  → 🔴 重度警告（上传链路已停）
+        auto_render 全为 False  → 🔴 重度警告（不会生成弹幕版）
+        auto_clean  全为 False  → 🟡 提示（本地文件会一直累积）
+        混合状态                → 逐项列出，便于核对是否本意
+
+    任何异常都只记日志，绝不阻断启动。
+    """
+    try:
+        rc = getattr(config, 'replay_config', None) or {}
+        if not rc:
+            logger.warning('流水线开关检查：未能读取任务配置（replay_config 为空）')
+            return
+
+        SWITCHES = [
+            ('auto_render', '自动渲染'),
+            ('auto_upload', '自动上传'),
+            ('auto_clean', '自动清理'),
+        ]
+        stats = {k: {'on': 0, 'off': 0, 'none': 0, 'off_tasks': []}
+                 for k, _ in SWITCHES}
+        for name, cfg in rc.items():
+            cea = ((cfg or {}).get('common_event_args') or {})
+            for key, _ in SWITCHES:
+                v = cea.get(key)
+                s = stats[key]
+                if v is True:
+                    s['on'] += 1
+                elif v is False:
+                    s['off'] += 1
+                    if len(s['off_tasks']) < 8:
+                        s['off_tasks'].append(name)
+                else:
+                    s['none'] += 1
+
+        total = len(rc)
+        logger.info('=' * 60)
+        logger.info('流水线开关检查（共 %d 个任务）', total)
+        for key, label in SWITCHES:
+            s = stats[key]
+            flag = '✅' if s['on'] == total else ('🟡' if s['on'] else '🔴')
+            logger.info('  %s %-10s 开启 %d / 关闭 %d / 未设置 %d',
+                        flag, label, s['on'], s['off'], s['none'])
+            if s['off'] and s['off'] < total:
+                logger.info('       关闭的任务：%s%s', ', '.join(s['off_tasks']),
+                            '…' if s['off'] > len(s['off_tasks']) else '')
+
+        # ── 重度警告：整条流水线被关掉 ──
+        if stats['auto_upload']['on'] == 0:
+            logger.warning(
+                '\n'
+                '  ' + '!' * 58 + '\n'
+                '  🔴 所有任务的 auto_upload 都是关闭状态 —— **上传链路已停！**\n'
+                '      后果：渲染出的弹幕版只会留在本地，永远不会传到网盘。\n'
+                '      排查：\n'
+                '        1) 是否把 Mod 的配置同步到了生产？（Mod 里 auto_upload=False）\n'
+                '        2) git -C F:\\DanmakuRender_AutoUp diff -- configs/\n'
+                '        3) python tools\\backup_configs.py verify\n'
+                '      恢复：python tools\\backup_configs.py restore <快照名>\n'
+                '  ' + '!' * 58)
+        if stats['auto_render']['on'] == 0:
+            logger.warning(
+                '\n'
+                '  ' + '!' * 58 + '\n'
+                '  🔴 所有任务的 auto_render 都是关闭状态 —— **不会生成弹幕版！**\n'
+                '      后果：只录到原始视频，不会渲染弹幕。\n'
+                '  ' + '!' * 58)
+        if stats['auto_clean']['on'] == 0:
+            logger.warning('  🟡 所有任务的 auto_clean 都关闭 —— '
+                           '本地源文件会一直累积（磁盘会慢慢满）')
+        logger.info('=' * 60)
+    except Exception as e:
+        try:
+            logger.debug(f'流水线开关检查出错（不影响启动）: {type(e).__name__}: {e}')
         except Exception:
             pass
 
@@ -295,6 +419,42 @@ def _verify_critical_names(logger):
             pass
 
 
+def _log_build_id(logger):
+    """启动时把当前 git 提交记进日志。
+
+    为什么需要：这是台长期在跑的生产机，"现在跑的到底是哪版代码"每次都要靠
+    进程启动时间和 git log 去推断；改完代码重启后也没法一眼确认新代码已加载。
+    这里直接读 .git（不启子进程），把短 hash 打进日志第一屏。
+
+    任何异常都只记 debug —— 这条日志绝不能影响启动。
+    """
+    try:
+        root = os.path.dirname(os.path.abspath(__file__))
+        head = os.path.join(root, '.git', 'HEAD')
+        if not os.path.exists(head):
+            return
+        with open(head, 'r', encoding='utf-8') as f:
+            ref = f.read().strip()
+        sha = ref
+        if ref.startswith('ref:'):
+            ref_path = os.path.join(root, '.git', ref[4:].strip())
+            if not os.path.exists(ref_path):
+                return
+            with open(ref_path, 'r', encoding='utf-8') as f:
+                sha = f.read().strip()
+        sha = sha.strip()
+        if 7 <= len(sha) <= 40 and all(c in '0123456789abcdef' for c in sha.lower()):
+            logger.info('代码版本: %s @ %s', VERSION, sha[:7])
+        else:
+            logger.debug('代码版本: %s（无法解析 git HEAD: %r）', VERSION, ref)
+    except Exception as e:
+        try:
+            logger.debug('读取代码版本失败（不影响启动）: %s: %s',
+                         type(e).__name__, e)
+        except Exception:
+            pass
+
+
 if __name__ == '__main__':    
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', default='configs/global.yml')
@@ -317,6 +477,21 @@ if __name__ == '__main__':
                         help='关掉控制台噪音过滤（会显示 engine 的消息字典）。'
                              '仅在排查管道问题时才需要。')
     args = parser.parse_args()
+
+    # ── 单实例锁（防跨会话双开，2026-10-19）─────────────────────────
+    # 能拉起 DMR 的入口有三个：开机任务（session 0）、登录自启（session 1）、
+    # 手动双击。三者的进程检查之间有几秒空档，同时通过就会起两个 DMR，
+    # 而两个实例共用同一份状态库和录制目录，会互相覆盖产物状态。
+    # 详见 DMR/utils/instance_lock.py（Windows 命名互斥体，进程退出自动释放）。
+    # 任何异常都 fail-open：无人值守机器上"能起来"优先。
+    if not args.version:
+        from DMR.utils.instance_lock import acquire as _acquire_instance_lock
+        if _acquire_instance_lock() == 'busy':
+            _busy_msg = ('已有 DanmakuRender 实例在运行，本次启动退出。\n'
+                         '两个实例会用同一份状态库和录制目录，互相覆盖产物状态。\n'
+                         '确实要再起一个（例如换了 --config），先停掉正在跑的那个。')
+            print(_busy_msg)
+            sys.exit(3)
 
     # 控制台日志级别
     #   默认 / --quiet      -> INFO（推荐：主播加载、开播、下播都能看到）
@@ -385,6 +560,7 @@ if __name__ == '__main__':
         logger.debug(f'内存诊断未启用: {_e}')
 
     logger.debug(f'VERSION: {VERSION}')
+    _log_build_id(logger)
 
     # 启动横幅：因为静默模式下控制台没有 INFO 日志，很容易看不出程序还在跑。
     # 用 print 直接输出（不经 logger），确保任何级别下都显示。
@@ -417,6 +593,9 @@ if __name__ == '__main__':
 
     # 启动时自检关键名字（防止"用了但拿不到"导致渲染/上传静默失败）
     _verify_critical_names(logger)
+
+    # 启动时检查自动化开关（防 auto_upload 等被静默翻转，导致流水线无声停摆）
+    _verify_pipeline_switches(config, logger)
 
     dmr = DanmakuRender(config, logger=logger, debug=args.debug)
     dmr.start()

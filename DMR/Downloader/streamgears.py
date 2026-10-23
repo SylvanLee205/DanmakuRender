@@ -72,6 +72,30 @@ class StreamgearsDownloader():
         with tempfile.TemporaryFile(dir='.temp') as logfile:
         # with open('.temp/test.log', 'wb') as logfile:
             self.streamgears_proc = subprocess.Popen(streamgears_args, stdin=subprocess.PIPE, stdout=logfile, stderr=subprocess.STDOUT)
+
+            # ══════════════════════════════════════════════════════════════
+            #  ⚠️⚠️ 重要：不要用「.part 文件体积」判断录制是否停滞 ⚠️⚠️
+            # ══════════════════════════════════════════════════════════════
+            # 2026-10-18 我（AI）曾在这里加过一个 STALL_TIMEOUT=300 的看门狗，
+            # 靠"分段文件 5 分钟不增长"来判定假连接并重连 —— **这是错的，已删除**。
+            #
+            # 用户实测（多次）：
+            #   · .flv.part 的体积会长时间一动不动
+            #   · 但弹幕 .ass 在正常增长（说明直播还在、下载器也在收数据）
+            #   · 一结束程序，.part 的体积突然从几 KB 跳到上百 MB
+            #   → 说明 biliup 内部**有较大的内存缓冲**，落盘是成块/延迟的，
+            #     文件大小和 mtime 完全不能反映"是否还在收数据"。
+            #
+            # 如果保留那个看门狗，会把**健康录制误判成停滞并 kill**，
+            # 造成真实的数据丢失。这是比"漏检停滞"严重得多的错误。
+            #
+            # 正确的存活信号（按可靠性排序）：
+            #   1. 子进程是否还活着（poll()）
+            #   2. 弹幕 .ass 是否还在增长（但这是另一个线程写的，只能作旁证）
+            #   3. biliup 自身输出的日志是否有新的 Downloading/写文件行
+            # 目前只保留 (1) —— 简单可靠，其余作为排查时的辅助观察。
+            # ══════════════════════════════════════════════════════════════
+
             while not self.stoped:
                 if self.streamgears_proc.poll() is not None:
                     break
@@ -86,8 +110,9 @@ class StreamgearsDownloader():
                 # 最后一个文件不算在内
                 for p in range(len(files)-1):
                     self.segment_callback(files[p])
+
                 time.sleep(10)
-            
+
             if not self.stoped and Onair(self.url):
                 logfile.seek(0)
                 log = logfile.read().decode('utf8', errors='ignore')

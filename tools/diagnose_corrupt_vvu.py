@@ -88,7 +88,7 @@ print(f'''
   日志证据（21:39:36）:
       [error] Websocket Closed
       RuntimeError: Websocket Closed
-      [error] https://live.douyin.com/123456789 弹幕下载线程异常退出，正在重试...
+      [error] https://live.douyin.com/557839188085 弹幕下载线程异常退出，正在重试...
   说明当时抖音侧的连接断了，streamgears 写出的 flv 有损坏。
 
   可选处置：

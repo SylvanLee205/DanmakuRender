@@ -49,7 +49,13 @@ class Config():
                 ToolsList.set(toolname, path)
 
         dmr_engine_args = self.global_config.get('dmr_engine_args', {})
-        self.replay_config_path_raw = dmr_engine_args.get('config_path', ['./configs'])
+        # ⚠️ 2026-10-19：`dynamic_config_path` 是历史键名（global.yml / 旧 default.yml
+        #    里一直写着它，但代码只读 config_path → 用户改了它完全不生效）。
+        #    现在两个名字都认，以 config_path 优先，避免"配置写了却没人理"。
+        self.replay_config_path_raw = (
+            dmr_engine_args.get('config_path')
+            or dmr_engine_args.get('dynamic_config_path')
+            or ['./configs'])
         if isinstance(self.replay_config_path_raw, str):
             self.replay_config_path_raw = [self.replay_config_path_raw]
 

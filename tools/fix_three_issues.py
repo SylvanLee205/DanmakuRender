@@ -24,7 +24,7 @@
   所以"没反应"。
 
   这是自签名证书的固有限制，不是我配置错了。
-  另外查到 Tailscale 域名是 win-e462mto1sb0.<设备名>.ts.net，
+  另外查到 Tailscale 域名是 win-e462mto1sb0.tail506a91.ts.net，
   但 CertDomains 为空 —— 没申请 Tailscale 的证书。
 
   处置：回滚到 HTTP（你手机本来能用），避免半坏状态。

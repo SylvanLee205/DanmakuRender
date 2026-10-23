@@ -926,6 +926,20 @@ class TestLengthGate(_StateCase):
 
         self.assertTrue(events._passes_length_gate(self.video(duration=None), 120, {}))
 
+    def test_mp4_with_unknown_duration_is_rejected(self):
+        """渲染产物读不出时长 = 没有 moov 的残缺文件，必须拒绝上传。
+
+        2026-10-19 实测：重启杀掉了正在跑的渲染，留下 111MB 无索引 mp4，
+        "时长未知按大小兜底"放行了它，直接传到了百度网盘。
+        """
+        events = self.make_events()
+        path = self.write("a.mp4", size_mb=200)
+        v = self.make_video_info(path=path)
+        v.duration = None
+        v.size = None
+
+        self.assertFalse(events._passes_length_gate(v, 120, {}))
+
     def test_unknown_duration_and_small_size_is_rejected(self):
         events = self.make_events()
 

@@ -4,6 +4,7 @@ import queue
 import threading
 import time
 import re
+import glob
 
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 from os.path import join,exists,splitext,basename
@@ -210,6 +211,82 @@ class StreamDownloadTask():
         # （早期版本在"扫目录"实现里用了宽泛的 except，把 unbound name 这类
         #   NameError 吞掉，导致功能静默失效且难以定位。）
 
+    def _start_resolution_probe(self) -> None:
+        """后台从**本地分段文件**补探真实分辨率，修正 self.width/height。
+
+        ⚠️ 为什么不用 ffprobe 探测直播流地址（原做法）：
+            1. 风控 —— 那会对抖音 CDN 额外开一条连接，而 streamgears 马上
+               也要连同一个流。抖音接口本身已有风控（日志里 6430 次
+               "取不到 data"），没必要多一条可疑连接。
+            2. 可靠性 —— 直播流探测容易失败（刚开播 CDN 未吐可解码帧、
+               15 秒超时不够、二次连接被限流），失败还被 bare except 吞掉，
+               只能静默兜底。历史日志里 20 天出现过一次。
+
+        本地文件探测几乎不会失败，也不需要任何网络连接。
+        时序上完全来得及：弹幕渲染发生在分段落盘之后。
+        """
+        import threading
+
+        # ⚠️ 2026-10-18 调整：
+        #   · 超时 3 分钟 → 5 分钟（实测有主播开播后前几分钟写入极慢，
+        #     3 分钟内文件到不了 200KB，导致日志频繁出现"未能在3分钟内探测到"）
+        #   · 候选文件只挑**视频后缀** —— 原实现用 taskname-* 通配，
+        #     会把 .ass 弹幕文件也当成候选；弹幕文件在热门房间几十秒就能
+        #     超过 200KB，ffprobe 对它必然失败，等于每轮都在做无用功。
+        PROBE_TIMEOUT = 300
+        PROBE_MIN_BYTES = 200 * 1024
+        VIDEO_EXTS = ('.flv.part', '.flv', '.mkv', '.mp4', '.ts.part', '.ts')
+
+        def _video_candidates():
+            # ⚠️ 2026-10-19 修复：glob 里 [ ] 是**字符类**语法，
+            #    [正在录制]x-* 会被解释成「匹配 正/在/录/制 中任意一个字符」，
+            #    永远匹配不到字面量 [正在录制]x-...。
+            #    实测后果：这个分辨率探测从加进来就**从未成功过**，
+            #    日志一直打「未能在 N 分钟内探测到分辨率」。
+            #    正解：用 glob.escape() 转义（内部会转成 [[] / []]）。
+            pat = glob.escape(join(self.output_dir, f'[正在录制]{self.taskname}-')) + '*'
+            out = []
+            for f in glob.glob(pat):
+                if not f.lower().endswith(VIDEO_EXTS):
+                    continue
+                try:
+                    if os.path.getsize(f) > PROBE_MIN_BYTES:
+                        out.append(f)
+                except OSError:
+                    continue
+            return sorted(out)
+
+        def _worker():
+            deadline = time.time() + PROBE_TIMEOUT
+            probed = False
+            while time.time() < deadline and not getattr(self, 'stoped', False):
+                try:
+                    cand = _video_candidates()
+                    if cand:
+                        # 注意：get_resolution 没有 fallback 参数，失败时返回 (0, 0)
+                        w, h = FFprobe.get_resolution(cand[-1])
+                        if w and h:
+                            if (w, h) != (self.width, self.height):
+                                self.logger.info(
+                                    f'{self.taskname}: 从本地分段探测到真实分辨率 '
+                                    f'{w}x{h}（原用 {self.width}x{self.height}），已修正。')
+                                self.width, self.height = w, h
+                            else:
+                                self.logger.debug(
+                                    f'{self.taskname}: 分辨率确认 {w}x{h}。')
+                            probed = True
+                            break
+                except Exception as e:
+                    self.logger.debug(f'分辨率探测跳过: {e}')
+                time.sleep(3)
+            if not probed:
+                self.logger.debug(
+                    f'{self.taskname}: 未能在 {PROBE_TIMEOUT // 60} 分钟内从本地分段'
+                    f'探测到分辨率，继续使用 {self.width}x{self.height}（仅影响弹幕渲染尺寸）。')
+
+        threading.Thread(target=_worker, name='resolution-probe',
+                         daemon=True).start()
+
     def _on_live_end(self) -> None:
         """标记场次结束，使对账可以在产物全部终态后回收该场次。"""
         if self.state_repo is None:
@@ -339,7 +416,27 @@ class StreamDownloadTask():
             raise RuntimeError(f'{self.taskname}: 获取直播流地址失败（GetStreamURL 返回 {stream_url!r}），'
                                f'通常是平台风控/限流或直播间状态异常，稍后会自动重试。')
 
-        width, height = FFprobe.get_resolution(stream_url, stream_request_header)
+        width, height = 0, 0
+        # ── 分辨率获取 ──────────────────────────────────────────────
+        # ⚠️ 2026-10-16 改：不再用 ffprobe 去探测**直播流地址**。
+        #
+        # 原来的做法（FFprobe.get_resolution(stream_url, header)）有两个问题：
+        #   1. 【风控】它会对抖音 CDN 额外开一条连接。抖音接口本身就有风控
+        #      （日志里 6430 次"取不到 data"），多一条连接只是徒增可疑信号。
+        #      而 streamgears 马上也要连同一个流 —— 等于同一份内容连两次。
+        #   2. 【可靠性】直播流探测容易失败（刚开播 CDN 还没吐可解码帧、
+        #      15 秒超时不够、二次连接被限流），失败就被 bare except 吞掉，
+        #      只能静默兜底成 1920x1080。历史日志里 20 天出现过。
+        #
+        # 新做法：先按默认值继续，**录制开始后从本地分段文件**补探一次
+        # （见 _probe_resolution_from_segment）。本地文件探测几乎不会失败，
+        # 也不需要额外网络连接。时序上完全来得及 —— 弹幕渲染发生在分段
+        # 落盘**之后**，届时 self.width/height 已被修正。
+        default_resolution = self.advanced_video_args.get(
+            'default_resolution', (1920, 1080))
+        width, height = default_resolution
+        self._resolution_probing = True
+
         # 斗鱼和虎牙的直播地址只能用一次，所以要重新获取
         if self.plat == 'douyu' or self.plat == 'huya':
             stream_url = self.liveapi.GetStreamURL(**self.stream_option)
@@ -384,12 +481,12 @@ class StreamDownloadTask():
         else: 
             raise NotImplementedError(f'No Downloader Named {this_engine}.')
 
-        if not (width and height):
-            default_resolution = self.advanced_video_args.get('default_resolution', (1920, 1080))
-            self.logger.warning(f'无法获取视频大小，使用默认值 {default_resolution}.')
-            width, height = default_resolution
-        
-        self.width,self.height = width, height
+        # 上面已按 default_resolution 兜底，这里只做提示（不再是"失败"语气）
+        self.width, self.height = width, height
+        if getattr(self, '_resolution_probing', False):
+            self.logger.info(
+                f'{self.taskname}: 先用默认分辨率 {width}x{height} 建立弹幕区域，'
+                f'待首个分段落盘后自动修正为真实分辨率。')
 
         self.downloader = None
         self.dmw = None
@@ -423,6 +520,8 @@ class StreamDownloadTask():
                 debug=self.debug,
                 **self.kwargs
             )
+            # 录制开始后，后台从本地分段补探真实分辨率（不碰网络、不碰风控）
+            self._start_resolution_probe()
             self.downloader.start()
 
         self.executor = ThreadPoolExecutor(max_workers=int(self.danmaku) + int(self.video))
@@ -443,6 +542,45 @@ class StreamDownloadTask():
                 if self.liveapi.Onair() == False:
                     self.logger.debug('LIVE END.')
                     return
+
+    def _brief_stream_error(self, exc, maxlen: int = 160) -> str:
+        """把流中断异常压成一行可读摘要（去掉签名 URL、换行、ANSI 色码）。
+
+        ⚠️ 为什么要单独做：
+            异常消息里常带整条带签名的流地址（抖音的几百字符，
+            含 sign/expire/volcSecret）。直接打进控制台会刷屏，
+            截图/分享日志时还会泄露取流签名。
+            排查只需要知道"哪台 CDN 主机 + 什么原因"，所以丢弃 ?query。
+        """
+        try:
+            s = str(exc)
+            s = re.sub(r'\x1b\[[0-9;]*m', '', s)          # 去 ANSI 色码
+            s = re.sub(r'(https?://[^\s?\'"<>)\]]+)\?[^\s\'"<>)\]]*',
+                       r'\1?<签名已省略>', s)              # 丢查询串
+            lines = [l.strip() for l in s.split('\n') if l.strip()]
+            if not lines:
+                return type(exc).__name__
+            keys = ('ERROR', 'error', 'Failed', 'failed', 'panic', 'refused',
+                    'timeout', 'timed out', 'reset', 'closed', 'Done', 'exit')
+            pick = [l for l in lines if any(k in l for k in keys)]
+            chosen = pick[-1] if pick else lines[-1]
+            chosen = re.sub(r'^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d+)?\s*', '', chosen)
+            chosen = re.sub(r'^(INFO|WARN|ERROR|DEBUG|TRACE)\s+', '', chosen)
+            if len(chosen) > maxlen:
+                chosen = chosen[:maxlen] + '…'
+            return chosen
+        except Exception:
+            return str(exc)[:maxlen]
+
+    def _describe_retry(self, restart_cnt: int, step, max_iv, last_secs: float) -> str:
+        """生成"接下来怎么重试"的一句话（供日志用）。"""
+        try:
+            if last_secs >= 60:
+                return '立即重连'
+            wait = min(0 + step * restart_cnt, max_iv)
+            return f'{wait:.0f} 秒后重连（第 {restart_cnt + 1} 次）'
+        except Exception:
+            return '稍后重连'
 
     def start_helper(self):
         self.loop = True
@@ -465,6 +603,7 @@ class StreamDownloadTask():
             live_end = True
             time.sleep(start_check_interval)
 
+        _attempt_started = 0.0      # 本轮尝试的开始时间（用于智能退避）
         while self.loop:
             if not self.liveapi.Onair():
                 restart_cnt = 0
@@ -487,19 +626,49 @@ class StreamDownloadTask():
                 stop_waited = 0
                 live_end = False
                 self._pipeSend('livestart', '直播开始', dtype='str', data=self.sess_id)
+                _attempt_started = time.time()
                 self.start_once()
+                _attempt_secs = time.time() - _attempt_started
                 if self.liveapi.Onair():
                     raise RuntimeError(f'{self.taskname} 录制异常退出.')
             except KeyboardInterrupt:
                 self.stop()
                 exit(0)
             except Exception as e:
+                _attempt_secs = (time.time() - _attempt_started
+                                 if _attempt_started else 0)
                 if self.liveapi.Onair():
-                    self.logger.exception(e)
+                    # ── 日志降噪（2026-10-16）──────────────────────────
+                    # 原来直接 logger.exception(e) 会把整条带签名的流地址
+                    # 打进控制台（几百字符），一次断流刷满屏幕。这里：
+                    #   · 控制台/事件：脱敏 + 截断的一行摘要
+                    #   · 日志文件：保留完整异常（排查仍可看全文）
+                    _brief = self._brief_stream_error(e)
+                    self.logger.warning(
+                        f'{self.taskname}: 流中断（本次录到 {_attempt_secs:.0f} 秒），'
+                        f'{self._describe_retry(restart_cnt, restart_interval_step, restart_interval_max, _attempt_secs)}'
+                        f' —— {_brief}')
+                    self.logger.debug('完整异常：', exc_info=True)
                     self.stop_once()
-                    self._pipeSend('liveerror', f'录制过程出错:{e}', dtype='Exception', data=e)
-                    time.sleep(min(restart_interval_min + restart_interval_step * restart_cnt, restart_interval_max))
-                    restart_cnt += 1
+                    self._pipeSend('liveerror', f'录制过程出错:{_brief}',
+                                   dtype='Exception', data=e)
+                    # ── 智能退避（2026-10-16）──────────────────────────
+                    # 原逻辑：0s → 10s → 60s → 60s...（固定递增）
+                    # 新逻辑：如果上一次**录到了足够长的内容**（>=60 秒），
+                    #         说明流本身是健康的，只是被抖断 —— 立即重连，
+                    #         不浪费退避时间；
+                    #         如果一再快速失败（<60 秒），才逐级退避，
+                    #         避免短时间内反复请求 GetStreamURL 触发抖音风控。
+                    if _attempt_secs >= 60:
+                        _wait = 0
+                        restart_cnt = 0      # 健康流：重置计数
+                    else:
+                        _wait = min(restart_interval_min +
+                                    restart_interval_step * restart_cnt,
+                                    restart_interval_max)
+                        restart_cnt += 1
+                    if _wait > 0:
+                        time.sleep(_wait)
                     continue
                 else:
                     self.logger.debug(e)

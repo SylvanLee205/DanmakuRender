@@ -113,7 +113,8 @@ r = show('A11 0字节产物保险闸', 'DMR/Render/dmrender.py',
 if not r:
     fails += 1
 r2 = show('A11b 上游根治(读ffmpeg退出码)', 'DMR/Render/ffmpeg.py',
-          ['returncode = self.render_proc.wait()'])
+          # 2026-10-19：现在是 wait(timeout=...)，改成匹配前缀
+          ['returncode = self.render_proc.wait('])
 if not r2:
     fails += 1
 
@@ -245,6 +246,15 @@ for _p in _scan:
         if isinstance(_n, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
             # 模块级调用（main.py 里直接调 _verify_configs(...)）
             pass
+        # ⚠️ 2026-10-19 修：之前只统计「调用」（ast.Call），
+        #    但事件表里的接线是**属性引用**：
+        #        'render/error': self.onTaskError,     ← 没有括号！
+        #    所以即使接线正确，这里也会误报成孤儿。
+        #    现在同时收集 self.xxx 属性引用。
+        if isinstance(_n, _ast.Attribute):
+            if (isinstance(_n.value, _ast.Name)
+                    and _n.value.id == 'self'):
+                _called.add(_n.attr)
         if isinstance(_n, _ast.Call):
             _fn = _n.func
             if (isinstance(_fn, _ast.Attribute)
@@ -265,6 +275,10 @@ WATCH = [
     '_handle_unusable', '_promote_intermediate_name', '_passes_length_gate',
     '_free_state_memory', '_verify_configs', '_verify_critical_names',
     '_startup_recover', '_ConsoleNoiseFilter',
+    # ⚠️ 2026-10-19 补：这两个是全仓真孤儿（定义了从未被引用），
+    #    之前不在白名单里所以 D 段一直显示“全部通过”——正是它们被漏掉的原因。
+    #    （注：D 段是跨文件不感知的，render_one/resume_recovered 这类由别的文件调用的会误报，所以白名单只放“本文件内应该被引用”的方法。）
+    'onTaskError',
 ]
 _orphans = []
 for _m in sorted(WATCH):

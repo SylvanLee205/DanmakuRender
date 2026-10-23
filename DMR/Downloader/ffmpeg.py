@@ -205,7 +205,13 @@ class FFmpegDownloader():
                             if l > 0 and r > 0:
                                 downloaded_duration = line[l+5:r]
                             try:
-                                h, m, s = int(downloaded_duration.split(':')[0]), int(downloaded_duration.split(':')[0]), float(downloaded_duration.split(':')[2])
+                                # ⚠️ 2026-10-19 修：原来 h 和 m 都用了 split(':')[0]，
+                                #    导致 time=01:23:45 被算成 3705s 而非 5025s（差 -22 分钟）。
+                                #    平时 h=m=0 凭幸无官症，但断流重连后首个采样
+                                #    落在开播 1 小时后就会让 time_error 差整小时。
+                                #    time_error 会进 dmw.time_fix() → 弹幕时间轴整体错位。
+                                _parts = downloaded_duration.split(':')
+                                h, m, s = int(_parts[0]), int(_parts[1]), float(_parts[2])
                                 downloaded_duration_ms = h * 3600 + m * 60 + s
                                 time_error = downloaded_duration_ms - datetime.now().timestamp() + self.start_time + (speed - 1)
                                 self.stable_callback(time_error)
