@@ -1,6 +1,6 @@
 @echo off
 setlocal
-chcp 65001 >nul
+chcp 65001 <nul >nul
 title Install DMR boot task
 rem ASCII ONLY.
 rem Self-elevate: without admin the task cannot be created.

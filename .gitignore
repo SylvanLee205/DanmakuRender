@@ -44,3 +44,6 @@ notify_content.txt
 notify_title.txt
 # 历史同步备份目录
 .backup-sync-*/
+
+# 隔离区（停用主播时的暂存，内容因人而异，绝不入库）
+/.trash/

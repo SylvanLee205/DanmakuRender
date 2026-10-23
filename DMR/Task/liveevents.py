@@ -808,6 +808,12 @@ class LiveEvents(BaseEvents):
         #    **漏了这里的调用点** —— 导致跳过上传规则完全失效（横屏/高码率/高帧率
         #    的视频本应跳过，却全被上传，白占带宽和网盘空间）。
         skip_rule = self._get_upload_skip_rule()
+        # ⚠️ 2026-10-23：记录本次是否新命中了「跳过上传」。
+        #    命中跳过的槽位**不会**产生任何上传事件 → onUploadEnd 不会来 →
+        #    _check_for_clean 永远不会被调用（它只有 onUploadEnd / onTaskError
+        #    两个调用点）。而横屏高码率恰恰是最占空间的那一批，于是无限累积。
+        #    所以在函数末尾补一次清理判定。
+        newly_skipped = False
         # ⚠️ 2026-10-19：跳过上传规则只能用于**有上传规则的槽位**。
         #    之前对所有 'ready' 的 vtype 都跑一遍，连 src_video（上传配置里根本没有它）
         #    也会去做 ffprobe 判断，日志里出现大量
@@ -830,6 +836,7 @@ class LiveEvents(BaseEvents):
                 # 命中跳过规则 → 标成 upload_skipped（清理流程据此判定"该传的都处理完了"）。
                 # 标记必须在提交上传任务之前，否则状态已被置为 uploading。
                 if self._mark_upload_skipped(video_state, vtype, info, skip_rule):
+                    newly_skipped = True
                     # ⚠️ 2026-10-18 补：把 upload_skipped 持久化到状态库。
                     # 原来只改内存，导致每次重启都重新对同一批文件跑 ffprobe
                     # 判断跳过规则（浪费），而且库里显示 rendered/recorded
@@ -938,6 +945,21 @@ class LiveEvents(BaseEvents):
                             self._sync_upload_group(group_key, arg)
                             ret_msgs.append(upload_msg)
 
+        # ── 2026-10-23 修：命中跳过上传的分段补一次清理判定 ────────────
+        #    upload_skipped 是终态，_check_for_clean 认它，缺的只是"谁来调"。
+        #    重复调用是安全的：src_video 提交前会先判 status != 'cleaned'。
+        if newly_skipped and self.config['common_event_args'].get('auto_clean'):
+            try:
+                clean_msgs = self._check_for_clean(group_id)
+                if clean_msgs:
+                    self.logger.info(
+                        f'{self.name}: 命中跳过上传，已按清理规则安排删除源文件 '
+                        f'（{len(clean_msgs)} 个任务）')
+                ret_msgs += clean_msgs
+            except Exception as e:
+                self.logger.error(
+                    f'{self.name}: 跳过上传后的清理判定出错: {type(e).__name__}: {e}')
+
         return ret_msgs
     
     def _group_or_none(self, group_id, *, source: str):
@@ -1010,7 +1032,12 @@ class LiveEvents(BaseEvents):
                     #   语义明确写着“原视频照常清理，弹幕版留存”。
                     # ⚠️ 但 'failed' 不能认：渲染失败时源视频是**唯一副本**，
                     #   删了就永远没了（应该保留待人工重渲染）。
-                    if info['status'] not in ('uploaded', 'upload_skipped'):
+                    # ⚠️ 2026-10-23 修：'skipped' 是状态库里 SKIPPED 落盘的字符串，
+                    #    内存里叫 'upload_skipped' —— 两者不是一个名字。
+                    #    进程重启后状态是从库里恢复的，dm_video 恢复出来就是 'skipped'；
+                    #    这里不认它 → 只要重启一次，这批文件就永远清不掉。
+                    #    实盘：断尾人类/小鱼大王 累计 42.9 GB 源视频滞留在磁盘。
+                    if info['status'] not in ('uploaded', 'upload_skipped', 'skipped'):
                         continue
                     for clean_file_types, clean_arg in clean_args.items():
                         # 判断当前视频是否需要清理

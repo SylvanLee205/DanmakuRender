@@ -1,6 +1,6 @@
 @echo off
 setlocal
-chcp 65001 >nul
+chcp 65001 <nul >nul
 title Remove DMR boot task
 net session >nul 2>&1
 if errorlevel 1 (

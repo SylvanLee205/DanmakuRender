@@ -85,12 +85,26 @@ class DanmakuRender():
             self.state_repo = None
 
     def _check_task_set_consistency(self) -> None:
-        """状态库与当前任务集不一致时拒绝启动。
+        """状态库与当前任务集不一致时的处置。
 
-        状态库是**单一全局库**，靠 ``taskname`` 区分任务。但任务配置放在
-        ``configs/*.yml``（会被 ``.gitignore`` 忽略）—— 一旦用户换了一份配置目录，
-        旧任务就"消失"了。此时若继续运行，后续的过期回收会把**本应保留**的旧任务
-        状态当作垃圾删掉。因此这里拒绝启动，并给出明确的处置指引。
+        状态库是**单一全局库**，靠 ``taskname`` 区分任务。任务配置放在
+        ``configs/*.yml``（会被 ``.gitignore`` 忽略），用户经常把主播配置挪进
+        ``configs/temp/`` 停用 —— 此时旧任务就从当前配置里"消失"了。
+
+        历史行为是**拒绝启动**，防止配置目录指错时误删历史状态。但实测
+        （2026-10-23）这个惩罚过重：停用主播的产物往往还有 ``src_video`` 停在
+        ``recorded``（48 小时后悔期内），不属于终态，于是自动清理不认它 →
+        拒绝启动 → 守护循环每 10 秒重拉 → 崩溃循环刷日志。
+        而"该录的没录起来"远比"库里留几行用不到的状态"严重。
+
+        现行策略：
+          * 配置里一个任务都没有          → 仍然拒绝启动（基本是 config_path 指错）
+          * 孤儿任务产物**全是终态**       → 自动清理历史并继续
+          * 其余（有未终态产物的孤儿任务） → **默认隔离放行**，只记 warning；
+            历史行保留，配置挪回 configs/ 即可继续用。已核实没有任何后台任务
+            会回收这些行（purge_task 只有启动自动清理和
+            tools/purge_task_state.py 两处调用），所以留着不会丢东西。
+          * ``state.strict_consistency: true`` → 恢复旧的"拒绝启动"行为。
         """
         if self.state_repo is None:
             return
@@ -138,12 +152,42 @@ class DanmakuRender():
             self.logger.debug(f'孤儿任务自动清理跳过（不影响启动）: '
                               f'{type(e).__name__}: {e}')
 
-        raise StateConsistencyError(
-            f'状态库 {self.state_db_path} 记录了任务 {sorted(missing)}，'
-            f'但当前配置中没有这些任务（当前任务：{sorted(current_tasks)}）。\n'
-            '为避免误删这些任务的历史状态，程序拒绝启动。请任选其一：\n'
-            f'  1) 切换回正确的配置目录（dmr_engine_args.config_path）；\n'
-            f'  2) 若确定不再需要旧任务，删除 {self.state_db_path} 后重新开始。'
+        # ── 2026-10-23：从"拒绝启动"改为"隔离并继续" ──────────────────
+        # 用户经常把主播配置挪进 configs/temp/ 停用；这些任务的产物往往还有
+        # src_video 停在 recorded（48 小时后悔期内），上面的自动清理不认它，
+        # 于是旧逻辑直接拒绝启动 → 守护循环 10 秒重拉 → 崩溃循环刷日志。
+        # 而"该录的没录起来"才是最大的隐患，远比"库里留几行用不到的状态"严重。
+        # 安全性：没有任何后台任务会回收这些行（purge_task 只有启动自动清理和
+        # tools/purge_task_state.py 两处调用），留着不会丢东西；把配置挪回
+        # configs/ 就能继续用这些历史。确要认真时可打开 strict_consistency。
+        from .state.enums import TERMINAL_ARTIFACT_STATES as _TERMINAL
+        strict = bool((self.config.get_config('state') or {})
+                      .get('strict_consistency', False))
+        if strict:
+            raise StateConsistencyError(
+                f'状态库 {self.state_db_path} 记录了任务 {sorted(missing)}，'
+                f'但当前配置中没有这些任务（当前任务：{sorted(current_tasks)}）。\n'
+                '已启用 state.strict_consistency，按严格模式拒绝启动。请任选其一：\n'
+                f'  1) 切换回正确的配置目录（dmr_engine_args.config_path）；\n'
+                f'  2) 若确定不再需要旧任务，运行 '
+                f'tools/purge_task_state.py --apply（比删整个库安全）。'
+            )
+
+        detail = []
+        for _tn in sorted(missing):
+            _sids = [s.session_id for s in self.state_repo.list_sessions()
+                     if s.taskname == _tn]
+            _alive = 0
+            for _sid in _sids:
+                _alive += sum(
+                    1 for a in self.state_repo.list_artifacts(session_id=_sid)
+                    if a.state not in _TERMINAL)
+            detail.append(f'{_tn}({len(_sids)} 场, 未终态产物 {_alive} 项)')
+        self.logger.warning(
+            f'状态库里有 {len(missing)} 个任务不在当前配置中：'
+            f'{", ".join(detail)}。已按"停用归档"隔离处理，不影响启动；'
+            f'历史记录保留，配置挪回 configs/ 即可继续使用。'
+            f'如需彻底清除，运行 tools/purge_task_state.py --apply。'
         )
 
     def _inject_state_repo(self) -> None:

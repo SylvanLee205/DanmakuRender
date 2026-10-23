@@ -27,7 +27,7 @@ class _WiringTestCase(DMRTestCase):
         self.tmpdir = self._tmp.name
 
     def make_config(self, taskname: str = "test", *, config_path: str | None = None,
-                    subdir: str = ""):
+                    subdir: str = "", strict: bool = False):
         """写一份可用于 ``Config`` 的全局配置 + 任务配置，返回全局配置路径。"""
         from DMR.Config import Config
 
@@ -53,7 +53,9 @@ class _WiringTestCase(DMRTestCase):
                 "dmr_engine_args:\n"
                 f"  config_path: {config_path or config_dir}\n"
                 "  enabled_plugins: ['downloader']\n"
-                f"state:\n  db_path: {os.path.join(self.tmpdir, 'dmr_state.db')}\n"
+                "state:\n"
+                f"  db_path: {os.path.join(self.tmpdir, 'dmr_state.db')}\n"
+                f"  strict_consistency: {'true' if strict else 'false'}\n"
             )
         return Config(global_file)
 
@@ -119,7 +121,7 @@ class TestStateWiring(_WiringTestCase):
 
 
 class TestTaskSetConsistency(_WiringTestCase):
-    """状态库是单一全局库，配置目录一换就会"任务消失"，必须拒绝启动。"""
+    """孤儿任务（配置里没有、库里有）的处置：默认隔离放行，严格模式才拒绝启动。"""
 
     def _add_artifact(self, dmr, state):
         """给 sess-1 插一条指定状态的产物（用于构造"还有活"的孤儿任务）。"""
@@ -133,25 +135,50 @@ class TestTaskSetConsistency(_WiringTestCase):
              int(_t.time()), '{}'))
         conn.commit()
 
-    def test_missing_task_refuses_to_start(self):
+    def test_missing_task_is_quarantined_and_starts(self):
+        """孤儿任务默认**不**阻止启动，历史保留（2026-10-23 改）。
+
+        起因：用户把主播配置挪进 configs/temp/ 停用，而该任务的产物还有
+        src_video 停在 recorded（48 小时后悔期内）→ 旧逻辑拒绝启动 →
+        守护循环 10 秒重拉 → 崩溃循环。而"没录起来"比"留几行状态"严重得多。
+        """
+        from DMR import DanmakuRender
+
+        config = self.make_config(taskname="test")
+        first = self.make_dmr(config)
+        first.state_repo.create_session("sess-1", "test")
+        # 留一条非终态产物：自动清理不认它，走"隔离放行"这条路径
+        self._add_artifact(first, 'recorded')
+        first.stop()
+
+        other = self.make_config(taskname="other", subdir="configs2")
+        second = DanmakuRender(other)          # 不应抛 StateConsistencyError
+        try:
+            self.assertIsNotNone(second.state_repo)
+            # 历史行必须保留：配置挪回 configs/ 就能接着用
+            self.assertIsNotNone(second.state_repo.get_session("sess-1"))
+        finally:
+            second.stop()
+
+    def test_strict_consistency_still_refuses_to_start(self):
+        """state.strict_consistency: true 时恢复旧的拒绝启动行为。"""
         from DMR import DanmakuRender, StateConsistencyError
 
         config = self.make_config(taskname="test")
         first = self.make_dmr(config)
         first.state_repo.create_session("sess-1", "test")
-        # 2026-10-19：必须留一条**非终态**产物，才算"有价值的历史"而拒绝启动。
-        # （全是终态/没有产物的孤儿任务会被自动清理 —— 见下面的新测试。）
         self._add_artifact(first, 'recorded')
         first.stop()
 
-        # 换一个只有别的任务的配置目录，但复用同一个状态库
-        other = self.make_config(taskname="other", subdir="configs2")
+        other = self.make_config(taskname="other", subdir="configs_strict",
+                                 strict=True)
         with self.assertRaises(StateConsistencyError) as ctx:
             DanmakuRender(other)
-
         message = str(ctx.exception)
         self.assertIn("test", message, "错误信息应指出缺失的任务名")
-        self.assertIn("dmr_state.db", message, "错误信息应给出处置指引")
+        self.assertIn("strict_consistency", message,
+                      "应提示是严格模式导致，并给出处置方式")
+        self.assertIn("purge_task_state.py", message)
 
     def test_refused_start_releases_state_db(self):
         """拒绝启动时不能留下打开的状态库连接（否则临时目录无法清理）。"""
@@ -163,7 +190,7 @@ class TestTaskSetConsistency(_WiringTestCase):
         self._add_artifact(first, 'recorded')
         first.stop()
 
-        other = self.make_config(taskname="other", subdir="configs3")
+        other = self.make_config(taskname="other", subdir="configs3", strict=True)
         with self.assertRaises(StateConsistencyError):
             DanmakuRender(other)
 

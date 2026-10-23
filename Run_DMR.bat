@@ -14,6 +14,6 @@ rem     itself), then session 0 fallback as a last resort (recording first).
 rem This mode NEVER kills or migrates processes - migration is done by the
 rem logon autostart only, so the two never fight.
 rem Every decision is logged to logs\autostart.log (session 0 has no console).
-chcp 65001 >nul
+chcp 65001 <nul >nul
 cd /d "%~dp0"
 ".\.venv\Scripts\python.exe" tools\autostart_launch.py --boot-fallback 180

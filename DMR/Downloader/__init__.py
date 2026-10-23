@@ -54,6 +54,44 @@ class Downloader():
             except Exception as e:
                 self.logger.error(f'Message:{message} raise an error.')
                 self.logger.exception(e)
+                # 2026-10-23：newtask 失败不能就这么算了 —— 见下方重试逻辑。
+                self._schedule_newtask_retry(message)
+
+    # ── 2026-10-23：下载任务创建失败自动重试 ────────────────────────
+    # 实盘事故：抖音接口 5 秒读超时发生在 StreamDownloadTask 构造
+    # （LiveAPI(url) → 解析房间号）的那一瞬间，newtask 抛异常 →
+    # 消息被 _pipeRecvMonitor 的 except 吞掉 → **这个主播本次开播就不会被
+    # 录制**，而且没有任何自动重试，只能重启程序或改动配置才会重新派发。
+    # "没录起来"是最大的隐患，所以这里补一个有界重试（不是无限重试，
+    # 避免配置本身有问题时刷屏）。
+    NEWTASK_MAX_RETRY = 3
+    NEWTASK_RETRY_DELAY = 30
+
+    def _schedule_newtask_retry(self, message) -> None:
+        """newtask 创建失败时安排重发；其它事件不重试（没有重发语义）。"""
+        if getattr(message, 'event', None) != 'newtask':
+            return
+        data = message.data if isinstance(message.data, dict) else {}
+        tries = int(data.get('_dl_retry', 0) or 0)
+        name = data.get('taskname', '?')
+        if tries >= self.NEWTASK_MAX_RETRY:
+            self.logger.error(
+                f'下载任务 {name} 连续 {tries} 次创建失败，本次放弃。'
+                f'重启程序或改动任意配置可重新派发。')
+            return
+        data['_dl_retry'] = tries + 1
+        delay = self.NEWTASK_RETRY_DELAY * (tries + 1)
+        self.logger.warning(
+            f'下载任务 {name} 创建失败，{delay} 秒后重试'
+            f'（第 {tries + 1}/{self.NEWTASK_MAX_RETRY} 次）。')
+        timer = threading.Timer(delay, self._requeue_newtask, args=(message,))
+        timer.daemon = True
+        timer.start()
+
+    def _requeue_newtask(self, message) -> None:
+        if self.stoped or self.recv_queue is None:
+            return
+        self.recv_queue.put(message)
         
     def stoptask(self, taskname:str):
         if taskname in self.download_tasks:

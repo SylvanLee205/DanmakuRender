@@ -16,7 +16,7 @@ rem  message reflects the real state instead of "about to start".
 rem ============================================================
 
 rem chcp 65001 keeps console output readable
-chcp 65001 >nul
+chcp 65001 <nul >nul
 
 title DanmakuRender_Guard
 

@@ -1,6 +1,6 @@
 @echo off
 setlocal
-chcp 65001 >nul
+chcp 65001 <nul >nul
 title Fix RDP lockout
 rem ASCII ONLY.
 rem Use this ONLY if you cannot connect over RDP again.

@@ -1,6 +1,6 @@
 @echo off
 setlocal
-chcp 65001 >nul
+chcp 65001 <nul >nul
 title Fix DMR boot task
 rem ASCII ONLY.
 rem Re-imports the boot task from tools\boot_task.xml, which has
