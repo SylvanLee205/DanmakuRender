@@ -44,6 +44,7 @@
 """
 import ctypes
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -116,11 +117,60 @@ def log(msg: str) -> None:
         pass
 
 
+def _session_id(pid: int) -> int:
+    """Windows 会话号；拿不到返回 -1。"""
+    try:
+        sess = ctypes.c_ulong(0)
+        if ctypes.windll.kernel32.ProcessIdToSessionId(
+                ctypes.c_ulong(pid), ctypes.byref(sess)):
+            return int(sess.value)
+    except Exception:
+        pass
+    return -1
+
+
+def _procs_psutil(name: str, needle: str = None) -> list:
+    """用 psutil 找进程，返回 [(pid, session), ...]。
+
+    2026-10-30：无人值守/沙箱环境里 PATH 上没有 powershell，
+    原来 `subprocess.run(['powershell', ...])` 直接 FileNotFoundError，
+    脚本在"准备启动"之前就崩了 —— DMR 起不来也停不下。
+    psutil 是 requirements.txt 里的既有依赖，不依赖任何外部可执行文件。
+    """
+    out = []
+    try:
+        import psutil
+    except ImportError:
+        return out
+    for p in psutil.process_iter(['pid', 'name', 'cmdline']):
+        try:
+            if (p.info['name'] or '').lower() != name.lower():
+                continue
+            if needle and not any(needle in (a or '')
+                                  for a in (p.info['cmdline'] or [])):
+                continue
+            out.append((p.info['pid'], _session_id(p.info['pid'])))
+        except Exception:
+            continue
+    return out
+
+
 def ps(cmd: str) -> str:
-    r = subprocess.run(['powershell', '-NoProfile', '-Command', cmd],
-                       capture_output=True, text=True, encoding='utf-8',
-                       errors='replace', timeout=90)
-    return ((r.stdout or '') + (r.stderr or '')).strip()
+    """跑一条进程查询。powershell 不在 PATH 时用 psutil 复刻（行为不变）。"""
+    if shutil.which('powershell'):
+        try:
+            r = subprocess.run(['powershell', '-NoProfile', '-Command', cmd],
+                               capture_output=True, text=True, encoding='utf-8',
+                               errors='replace', timeout=90)
+            return ((r.stdout or '') + (r.stderr or '')).strip()
+        except Exception:
+            pass
+    if cmd is DMR_Q:
+        return '\n'.join('%d,%d' % (pid, sess)
+                         for pid, sess in _procs_psutil('python.exe', 'main.py'))
+    if cmd is EXPLORER_Q:
+        return str(len(_procs_psutil('explorer.exe')))
+    return ''
 
 
 def dmr_processes() -> list:

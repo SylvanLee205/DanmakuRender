@@ -15,11 +15,23 @@
 用法：
     .venv\\Scripts\\python.exe tools\\stop_dmr.py --dry-run   # 只看会停什么
     .venv\\Scripts\\python.exe tools\\stop_dmr.py             # 真停（不重启）
+
+2026-10-30 改动：进程发现从"调 powershell.exe"改为 **psutil**。
+原来用 `subprocess.run(['powershell', ...])` 列进程，而某些环境（无人值守 /
+沙箱 / PATH 被裁剪）里 powershell 根本不在 PATH 上 —— 实测报
+`FileNotFoundError: [WinError 2]`，脚本在"停止前"就崩，一个进程都停不掉。
+psutil 本来就是 requirements.txt 里的依赖，不依赖任何外部可执行文件。
 """
 import os
-import subprocess
 import sys
 import time
+
+try:
+    import psutil
+except ImportError:  # pragma: no cover
+    print('缺少 psutil：请先 .venv\\Scripts\\pip install psutil')
+    print('（它在 requirements.txt 里，正常环境不该出现这条）')
+    sys.exit(2)
 
 UP = r'F:\DanmakuRender_AutoUp'
 DRY_RUN = '--dry-run' in sys.argv
@@ -35,29 +47,48 @@ except Exception:
     pass
 
 
-def ps(cmd):
-    r = subprocess.run(['powershell', '-NoProfile', '-Command', cmd],
-                       capture_output=True, text=True, encoding='utf-8',
-                       errors='replace', timeout=90)
-    return ((r.stdout or '') + (r.stderr or '')).strip()
+def _iter_procs():
+    """遍历进程，容忍进程在遍历途中退出。"""
+    try:
+        return list(psutil.process_iter(['pid', 'name', 'cmdline']))
+    except Exception:
+        return []
 
 
-def pids(query):
-    return [x for x in ps(query).split() if x.isdigit()]
+def _cmdline_has(cmdline, needle):
+    return any(needle in (a or '') for a in (cmdline or []))
 
 
-CMD_Q = ("Get-CimInstance Win32_Process -Filter \"Name='cmd.exe'\" | "
-         "Where-Object { $_.CommandLine -like '*Start_Render*' } | "
-         "ForEach-Object { $_.ProcessId }")
-DMR_Q = ("Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | "
-         "Where-Object { $_.CommandLine -like '*main.py*' } | "
-         "ForEach-Object { $_.ProcessId }")
-SG_Q = ("Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | "
-        "Where-Object { $_.CommandLine -like '*streamgears_wrapper*' } | "
-        "ForEach-Object { $_.ProcessId }")
-FF_Q = ("Get-CimInstance Win32_Process -Filter \"Name='ffmpeg.exe'\" | "
-        "Where-Object { $_.CommandLine -like '*-segment_time*' } | "
-        "ForEach-Object { $_.ProcessId }")
+def pids_cmd():
+    """守护循环的 cmd（命令行里含 Start_Render）。"""
+    return [p.info['pid'] for p in _iter_procs()
+            if (p.info['name'] or '').lower() == 'cmd.exe'
+            and _cmdline_has(p.info['cmdline'], 'Start_Render')]
+
+
+def pids_dmr():
+    """DMR 主进程（python 跑 main.py）。"""
+    return [p.info['pid'] for p in _iter_procs()
+            if (p.info['name'] or '').lower() == 'python.exe'
+            and _cmdline_has(p.info['cmdline'], 'main.py')]
+
+
+def pids_sg():
+    """streamgears 包装进程。"""
+    return [p.info['pid'] for p in _iter_procs()
+            if (p.info['name'] or '').lower() == 'python.exe'
+            and _cmdline_has(p.info['cmdline'], 'streamgears_wrapper')]
+
+
+def pids_ff():
+    """录制用 ffmpeg（判据 -segment_time，与渲染用的区分开）。"""
+    return [p.info['pid'] for p in _iter_procs()
+            if (p.info['name'] or '').lower() == 'ffmpeg.exe'
+            and _cmdline_has(p.info['cmdline'], '-segment_time')]
+
+
+# 兼容旧名字（别处/文档里可能还引用着）
+CMD_Q, DMR_Q, SG_Q, FF_Q = pids_cmd, pids_dmr, pids_sg, pids_ff
 
 
 def recording_files():
@@ -75,13 +106,23 @@ def recording_files():
 
 
 def show_state(tag):
-    print(f'  {tag}: 守护={pids(CMD_Q) or "无"}  DMR={pids(DMR_Q) or "无"}  '
-          f'streamgears={pids(SG_Q) or "无"}  ffmpeg={pids(FF_Q) or "无"}')
+    print(f'  {tag}: 守护={pids_cmd() or "无"}  DMR={pids_dmr() or "无"}  '
+          f'streamgears={pids_sg() or "无"}  ffmpeg={pids_ff() or "无"}')
 
 
 def kill(pid_list, label):
     for pid in pid_list:
-        ps(f"Stop-Process -Id {pid} -Force -ErrorAction SilentlyContinue")
+        try:
+            psutil.Process(pid).kill()
+        except psutil.NoSuchProcess:
+            print(f'    停 {label} {pid}（已自行退出）')
+            continue
+        except psutil.AccessDenied as e:
+            print(f'    ❌ 停 {label} {pid} 失败：权限不足（{e}）')
+            continue
+        except Exception as e:
+            print(f'    ❌ 停 {label} {pid} 失败：{type(e).__name__}: {e}')
+            continue
         print(f'    停 {label} {pid}')
 
 
@@ -104,22 +145,22 @@ def main() -> int:
         return 0
 
     print('\n  [1/3] 停止守护（防止它重新拉起 DMR）')
-    kill(pids(CMD_Q), '守护')
+    kill(pids_cmd(), '守护')
     time.sleep(2)
 
     print('  [2/3] 停止 DMR 主进程（从子到父）')
-    kill(list(reversed(pids(DMR_Q))), 'DMR')
+    kill(list(reversed(pids_dmr())), 'DMR')
     time.sleep(3)
 
     print('  [3/3] 停止录制子进程')
-    kill(pids(SG_Q), 'streamgears')
-    kill(pids(FF_Q), 'ffmpeg')
+    kill(pids_sg(), 'streamgears')
+    kill(pids_ff(), 'ffmpeg')
     time.sleep(2)
 
     print()
     show_state('停止后')
 
-    left = pids(CMD_Q) + pids(DMR_Q) + pids(SG_Q) + pids(FF_Q)
+    left = pids_cmd() + pids_dmr() + pids_sg() + pids_ff()
     if left:
         print('\n  ❌ 仍有进程未退出，请再跑一次本脚本，或检查是否有权限问题。')
         return 1
