@@ -9,6 +9,10 @@
 >
 > 所有条目均为**已核实的代码事实**（附文件与行号），不是猜测。
 > 用户已明确：**不修改** `configs/global.yml`，也暂不处理 §1 的未提交 WIP。
+>
+> **2026-11-02 更新**：「弹幕字符导致整场渲染失败」已修复（见 CHANGELOG 与
+> [排查记录](排查记录-20261102-渲染崩溃三个真凶.md)），但排查暴露出新的
+> **hevc_qsv 不稳定**问题，优先级更高，见文末 §2026-11-02。
 
 **当前进行中：无。**
 
@@ -231,3 +235,164 @@ C/D/E/F 等章节**。该文件未被 git 跟踪且没有备份，无法完整�
 - **错误**：对未被版本控制的重要文档执行"截断重写"，且未先备份。
 - **教训**：整理文档结构应逐段编辑，或先复制副本；对未跟踪文件尤其不能做破坏性重写。
 - **现状**：本次已按会话内实际执行结果重建（内容可靠），但**原始措辞可能已丢失**。
+
+---
+
+## 8. 2026-10-19 全量排查发现的未修复缺陷
+
+完整证据、代码位置与修法建议见 [`复查报告-20261019.md`](复查报告-20261019.md)。按严重度：
+
+| 编号 | 级别 | 缺陷 | 位置 |
+|---|---|---|---|
+| R1 | 🔴 P0 | 延迟清理用进程内 `threading.Timer`，重启即丢；状态已提前写 `cleaned` → 源视频永久残留（已实测 1.35GB 铁证，当前 6.42GB 孤儿） | `Cleaner/__init__.py:71-72` + `liveevents.py:877-879` |
+| R2 | 🔴 P0 | `render/error` / `uploader/error` 仍映射到 `defaultEvent`，`onTaskError` 从未注册 → 失败后 `wait` 不清空、状态不收敛 | `liveevents.py:70,72` |
+| R3 | 🟠 P1 | `_check_for_clean` 只认 `uploaded`，不认 `upload_skipped` → 命中跳过规则的源视频永不清理 | `liveevents.py:849` |
+| R4 | 🟠 P1 | 恢复重驱动只调 `_check_for_upload`，不派发渲染；渲染失败的 `dm_video` 会被标 `skipped` 永不重渲 | `liveevents.py:321-322` |
+| R5 | 🟠 P1 | 状态库段号用 `segment_id`、渲染/上传/清理用列表下标 `idx+1`，消息丢失后错位 | `liveevents.py:832,878,908,959` |
+| R6 | 🟡 P2 | 跳过规则被应用到无上传规则的 `src_video` 槽位（白跑 ffprobe + 状态写成 SKIPPED） | `liveevents.py:672-687` |
+| R7 | 🟡 P2 | ffmpeg 时长解析 `m` 误用下标 `[0]` | `Downloader/ffmpeg.py:208` |
+| R8 | 🟡 P2 | `_check_for_clean(group_id)` 形参被循环变量遮蔽（每次都全表扫描） | `liveevents.py:843-846` |
+| R9 | 🟡 P2 | 渲染仅 1 线程且 ffmpeg `wait()` 无超时，单次卡死会阻塞全部渲染 | `global.yml nrenders:1` + `Render/ffmpeg.py:39` |
+| R10 | ⚪ P3 | `global.yml` 的 `dynamic_config` / `dynamic_config_path` 无人读取 | `Config/__init__.py:52` |
+| R11 | ⚪ P3 | `ReplayTask` 仍要求 `replay/` 前缀，与 engine 的裸任务名路由不一致（潜在） | `replaytask.py:34` |
+| R12 | ⚪ P3 | `_free_state_memory` 的 `final_status` 不含 `uploaded`，`w_dmfile: False` 下分组只能 72h 超时释放 | `liveevents.py:915-920` |
+
+### 12:30 第二轮复查新增（复检报告见 [`复查报告-20261019-复检.md`](复查报告-20261019-复检.md)）
+
+R1–R5、R7、R8、R12 已核实修复；R6、R10、R11 仍未修；R9 改法有副作用。
+
+| 编号 | 级别 | 缺陷 | 位置 |
+|---|---|---|---|
+| N1 | 🔴 P0 | 渲染超时恒为 600 秒（`src_duration` 从未赋值）→ 实测 2/72 次正常渲染超过 600s（最长 16.1 分钟）、libx265 降级 31 分钟必被 kill | `Render/ffmpeg.py:44` ✅**已修**（13:30，见复检报告第五节） |
+| N2 | 🔴 P0 | `cleanup_duplicate_streamgears.py` 被截断 145→46 行，重启流程整段丢失（静默返回 0，不报错） | `tools/cleanup_duplicate_streamgears.py`（commit ebffcea） ✅**已修** |
+| N3 | 🟠 P1 | `_rearm_pending` 保存 `alive` 而非 `alive+overdue` → 已到期未执行的条目被提前移出清单（已复现） | `Cleaner/__init__.py` 末尾 ✅**已修** |
+| N6 | ⚪ P3 | 启动自检把已删除的 `.bak` 当"丢失配置"，每次启动一条 ERROR（次日 04:00 快照后自愈） | `main.py:_verify_configs` ✅**已修** |
+
+
+> 改 R1/R3/R5 涉及清理与状态写入，改完必须跑 `tools/test_clean_order.py`、`tools/test_skip_upload_flow.py`
+> 与全量单测（基线 `Ran 437 tests, OK (expected failures=5)`）。
+
+
+## 2026-10-19 夜间待确认（17:40 交接）
+
+1. **确认夜间渲染全部走 QSV**：新日志里搜 `降级到软件编码器` / `libx265`，
+   应为 0 条。17:25 之后 小鱼大王 48 分钟分段只用 2 分钟渲完，已经是硬件速度。
+2. **`11228ce`（上传闸门：mp4 读不出时长就拒绝上传）尚未加载** ——
+   17:25 那次启动加载的是 `c77c703`。下次重启才生效。
+3. **两个孤儿产物**待处理（`灰蒙蒙（弹幕版）`）：
+   `…10月18日16点13分(2)（弹幕版）.mp4`（25MB/342s）、
+   `…10月18日17点06分(2)（弹幕版）.mp4`（1.5MB/16s）。建议挪到隔离目录，别直接删。
+4. **17:22 那次重启的代价**（已全部补回）：
+   · `灰蒙蒙 14点56分(2)` 那一小段（26 分钟）渲染被杀，留下无索引 mp4 →
+     已手工重渲（198MB / 1544.5s / QSV）并重新上传，云端已核对；
+   · 期间上传的坏文件已从百度网盘删除。
+5. `recovery.on_interrupted_file` 已改 `keep` + 恢复流程补了弹幕转正，
+   所以以后重启不会再丢分段（最多丢最后几秒）。
+
+## 2026-10-20 凌晨交接（04:45）
+
+### ⚠️ 现在必须做一件事
+**双击 `Start_DMR.bat`** —— 当前实例已停掉（它的控制台是隐藏的）。
+双击后会有熟悉的 DanmakuRender_Guard 窗口。10 分钟内不启动的话，
+session 0 的守护循环会兜底起一个（无窗口）实例，届时 Start_DMR.bat
+会提示"已在运行"，告诉我即可。
+
+### 自动登录是坏的（当前最大隐患）
+`AutoAdminLogon=1` 但注册表里**没有 DefaultPassword** → 重启只会停在登录界面。
+（昨天远程 AI 恢复了 AutoAdminLogon=1 但没写回密码；Windows 更新当初可能就是
+这么把它弄没的。）
+修复二选一：① 运行 `netplwizard`，取消勾选"要使用本计算机必须输入用户名和密码"
+并输入密码（20 秒，不用告诉我密码）；② 把密码给我，我写进注册表。
+
+### 会话配置（按你的要求）
+`fSingleSessionPerUser = 1`（默认值，一个账号一个会话：本机/RDP/UU/RustDesk
+全部共用同一个 console 桌面）。已从 0 改回 1。
+已知时序坑：重启后自动登录抢先占住 console 的那 1~2 分钟，普通 RDP 可能报
+0x5——等一两分钟再连即可；Mac 端可给 .rdp 加 `administrative session:i:1`
+强制接 console（等价 mstsc /admin）。
+
+### 窗口可见性的真相（实测）
+计划任务拉起的进程（含它的子孙）**控制台窗口必然隐藏**（tasklist /v 显示"暂缺"）。
+可见窗口只来自用户交互式启动。所以：
+- 登录自启（Startup 里的 .cmd → explorer 启动）走的是交互式路径，
+  **下次登录/重启后窗口应该自动出现**（待验证）；
+- DanmakuRender_SessionWatch / DanmakuRender_Desktop 任务只负责"把 DMR
+  挪到你会话"，它们拉起的实例无窗口（录像不受影响）。
+
+### 新东西
+- `tools/autostart_launch.py` 重写：登录模式（带会话迁移 + 互斥锁 + 重试）、
+  守护模式（常驻循环：无人登录且 DMR 死 → session 0 兜底；有人登录 → 交给登录自启）。
+- 新任务 `DanmakuRender_SessionWatch`：登录时 + 解锁时触发 → 窗口跟着人走。
+- 开机任务改为常驻守护循环（04:39 已手动拉起，session 0）。
+- `DMR-Status.bat` 新增：窗口在不在本会话、自启日志尾部、自动登录是否真的有效。
+- `post_boot_check.py` 新增同样的检测（第 3b/7 段）。
+- 修了两个真 bug：`stop_dmr.py` 打印 ⚠️/❌ 在 GBK 管道下 UnicodeEncodeError
+  直接崩（迁移停不干净的真凶）；`autostart_launch.py` break 分支
+  FOREGROUND_LOCAL 未绑定会 NameError。
+
+### 待办
+1. 重启前先修好自动登录（见上），否则重启后停在登录界面。
+2. 重启后验证：Startup 自启是否给出可见窗口；DMR-Status.bat 的[窗口]行。
+3. `11228ce`（上传闸门：mp4 读不出时长就拒绝上传）还没加载，下次重启生效。
+4. 两个孤儿 `[正在录制]*.ass`（灰蒙蒙 Part002 / 小鱼大王 Part000）建议挪隔离目录。
+5. 蓝屏根因（Arc 驱动）按之前结论处理：更新 Intel 显卡驱动。
+
+## 2026-10-20 09:15 更新：自动登录已修复 ✅
+
+用户已执行 reg add DefaultPassword（netplwizard 在 Server 上不显示自动登录勾选框，
+因为安全策略要求登录时按 Ctrl+Alt+Del，这是已知行为，改注册表是正规路径）。
+四要素已齐：AutoAdminLogon=1 / DefaultUserName=Administrator /
+DefaultDomainName=win-e462mto1sb0 / DefaultPassword 已存 / ForceAutoLogon=0。
+DMR-Status.bat 的"自动登录"行已变绿。
+
+### 重启验证清单（按顺序）
+1. 等开机通知或 1~2 分钟（避免 /admin 连太早撞上"正在登录"）；
+2. console 应自动登录，DMR 窗口（DanmakuRender_Guard）自动出现；
+3. `DMR-Status.bat`：[运行中] 2 个进程、[窗口] 在本会话、自动登录 ✅；
+4. Mac RDP 普通连接 Administrator → 应直接接管 console 桌面（若报 0x5，
+   等 1~2 分钟或给 .rdp 加 `administrative session:i:1`）；
+5. RustDesk/AnyDesk → 直接看到同一个桌面。
+
+### 仍未处理
+- `11228ce`（上传闸门）需下次重启才加载。
+- 两个孤儿 `[正在录制]*.ass`（灰蒙蒙 Part002 / 小鱼大王 Part000）。
+- 蓝屏根因：更新 Intel Arc 驱动。
+
+---
+
+## 2026-11-02 更新：hevc_qsv 不稳定与渲染可观测性
+
+> 由「弹幕字符导致整场渲染失败」排查带出。三个字幕层真凶已修
+> （见 CHANGELOG 2026-11-02 与[排查记录](排查记录-20261102-渲染崩溃三个真凶.md)），
+> 但暴露出下面两个更值得跟进的问题。
+
+### H1. hevc_qsv 硬件编码不稳定（**优先级高**）
+- **位置**：`DMR/Render/dmrender.py` 的编码器选择（默认 `hevc_qsv`）
+- **证据**：同一段视频、同一条 ffmpeg 断言下 ——
+  `-f null`（不编码）跑 400 秒**正常**；换 `libx265` 跑 400 秒**正常**；
+  只有 `hevc_qsv` 崩（5 分钟处 imgutils 断言）。
+  另一次 libx264 撑到 50 分钟才崩，根因是**源视频损坏帧**导致 libass 输出帧
+  `stride 640 < width 720`（`-vf subtitles=...,scale=720:1280` 可绕开）。
+- **影响**：长视频（>20 分钟）渲染有概率失败。靠 DMR 的「qsv 失败降级
+  libx265」兜底，但每次要白等 2 轮重试 + 60 秒 ×2。
+- **怀疑同源**：2026-10-20 的 Arc 蓝屏 `0x113 VIDEO_DXGKRNL_FATAL_ERROR`。
+- **建议**：① **更新 Intel Arc 显卡驱动**（根治）② 或在配置里把默认编码器
+  改成 libx265（治标，慢但稳）。**用户尚未决定，待确认。**
+
+### H2. 源视频损坏帧无检测
+- **现象**：录制的 ts 有丢包时，ffmpeg 解码器刷 concealed errors，
+  而 `-fflags +discardcorrupt` 会悄悄掩盖，直到渲染时才以 stride 错误爆出来。
+- **建议**：录制完成时统计一次 concealed errors，超阈值就告警
+  （与 O1 是同类可观测性缺口）。
+
+### O1. 渲染前无「有效内容占比」预检
+- **现象**：源视频只录到 31% 内容时（2026-10-20 断尾人类），仍会老老实实渲染
+  3 分钟，最后被时长校验拒掉并删除 —— 白烧显卡和时间。
+- **建议**：渲染前用 ffprobe 快速算有效内容占比，低于阈值直接跳过渲染并
+  标记 failed，日志写「录制丢流 X%」。
+
+### O2. DMR 的「原因判断」会误导排查
+- **位置**：`DMR/Render/dmrender.py` 硬件编码失败时的 warning 文案
+- **现象**：它只看了退出码就写「GPU 编码会话被其他程序占用」，
+  而实际是 libass 字幕帧坏。本次排查因此被带偏过。
+- **建议**：把 ffmpeg stderr 尾部一起打出来，或按已知特征匹配真实原因。

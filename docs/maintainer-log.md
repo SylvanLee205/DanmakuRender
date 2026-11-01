@@ -342,3 +342,114 @@ python -B -m unittest discover -s unit_tests -t .
 | 恢复重驱动 | 用日志里的真实中间名文件复刻 | 成功改名并派发上传 |
 | 恢复判定 | 复刻损坏文件场景（440MB / 10MB） | 大小达标正常派发；不足则标记 `skipped` 且不再重试 |
 | 消息路由 | 复刻 uploader 裸任务名回包 | 产物状态 `uploading → uploaded`（修复前消息被丢弃） |
+
+---
+
+## 2026-11-02 · 弹幕字符字形安全清洗 + 优雅停止 + 孤儿分段登记
+
+完整排查过程见 [排查记录-20261102-渲染崩溃三个真凶.md](排查记录-20261102-渲染崩溃三个真凶.md)，
+这里只记实现要点与取舍。
+
+### 1. `DMR/Downloader/Danmaku/glyphs.py`（新增）
+
+**为什么不用 PIL**：`ImageFont.getbbox()` 对缺字形返回 .notdef 方框，
+尺寸与正常字符一样（实测 U+3103 返回 `(0,12,40,52)`，与正常汉字同量级），
+区分不出来。只有 fontTools 查 cmap 可靠。
+
+**两张表**：
+- `covered` = 所有字体的 cmap 并集（本机 167 个字体 → 144083 个码位，扫描约 5 秒）
+- `unsafe` = `color - primary`，即"会回退到彩色字体"的码位（本机 1563 个）
+
+**判据演进（三次才对，附为什么）**：
+
+| 判据 | 结果 |
+|---|---|
+| `color` | 太宽。彩色字体（seguiemj）的 cmap 含完整 ASCII 区，`sanitize('a,b:c')` → `''` |
+| `color - plain` | 太窄。U+1F1E8/U+1F408 在 SegoeUISymbol 的 cmap 里也有声明，被判安全；但 libass 按自己优先级实际选 seguiemj，照样崩 |
+| `color - primary` | 正确。主字体有字形就根本不会触发回退 |
+
+`primary` 从 `configs/global.yml` 的 `download_args.live.font` 读（默认
+`Source Han Sans SC`），按字体 name 表的 nameID 16/1 匹配。
+**认不出主字体时退化成"只过滤无字形字符"**，不会误删 ASCII。
+
+**性能**：纯 ASCII 走快速路径零开销；非 ASCII 每条弹幕 O(len) 次 set 查询。
+覆盖表按字体目录指纹（路径+大小+mtime 的 sha1）缓存到
+`.temp/glyph_coverage.json`，装/删字体自动重建；内存里 1 小时过期。
+
+**降级**：检测任何一步失败都返回 None，调用方**原样放行** ——
+绝不因为检测挂了把弹幕全删了。
+
+**接入点**：`danmaku.py` 在 `dm_available()` **之前**清洗
+`uname`/`content`/`text`（模板展开后再清一次 text）。
+所以**只防"写入 .ass 之前"**，已写坏的不回溯。
+
+### 2. 优雅停止（`main.py` + `tools/stop_dmr.py`）
+
+**DMR 原本就有优雅链路**，只是 `stop_dmr.py` 用 psutil 硬杀没走它：
+
+```
+Ctrl+C → main.py KeyboardInterrupt → dmr.stop()
+  → engine.stop() → del_task() → replay task stop
+    → stream_downloader.stop() → stop_once()
+      → downloader.stop() → ffmpeg communicate('q')   ← ffmpeg.py:308
+      → segment_callback(thisfile)                    ← 改名成正式名
+```
+
+**实现**：`main.py` 主循环从 `sleep(60)` 改成 0.2s 粒度轮询
+`.temp/graceful_stop_<PID>`。标志文件**带 PID** —— 万一残留也只会让
+对应实例退出，不会误伤别的；且 DMR 退出时自删 + `stop_dmr.py` 兜底清理
+（残留标志会让 DMR 一启动就退出，陷入崩溃循环，所以兜底清理是必须的）。
+
+`stop_dmr.py`：默认优雅（最多等 180s，`--timeout` 可调），超时才硬杀；
+`--force` 跳过优雅。结束时报「有没有 `[正在录制]` 残留」——
+这是优雅收尾是否奏效的直接证据。
+
+**踩坑**：改 `DMR/` 下代码必须重启才生效。这次优雅停止第一次没生效，
+就是因为 DMR 跑的是 10-30 启动的旧代码。
+
+### 3. `tools/rename_orphans.py`（新增）
+
+孤儿 `[正在录制]` 分段在状态库里没记录，reconciler 不管。而 reconciler 的
+`_promote_intermediate_name()` 本来就会按 `output_name` 模板改名并补派渲染，
+前提只是状态库里有记录 —— 该工具就是补这条记录（`INSERT OR IGNORE`，幂等）。
+
+**踩坑**：`glob.glob('*[正在录制]*.ts')` 会把方括号当字符类，一个都匹配不到
+（这个坑 2026-10-20 踩过一次，这次又踩了）。必须 `os.listdir` + `startswith`。
+
+**安全约束**：默认预览；`--apply` 才写；写前自动备份 `.db`；DMR 运行时拒绝写
+（SQLite 并发写会锁，除非 `--force`）；只 INSERT 不更新不删除；
+跳过 10 分钟内还在写的文件（正在录的分段不能登记，会和 ffmpeg 抢同一个文件）。
+
+### 4. 实测验证
+
+| 项目 | 结果 |
+|---|---|
+| 字形清洗（事故那场 .ass） | 剔除 586 字符：无字形 4 种 40 个（U+3103×4、U+FFF4×20、U+FE0B×15、U+2065×1）+ 彩色回退 91 种 546 个（🐈×89、🎂×46、❤×46、🌈×43…） |
+| ASCII 不误删 | `sanitize("hello, world: 123")` 原样返回；.ass 里逗号/冒号一个没少 |
+| 孤儿接管 | 3 个 `[正在录制]` 全部被 reconciler 自动改名成正式名并补派渲染 |
+| 单元测试 | 20 个（`unit_tests/test_glyphs.py`），全 mock 覆盖表，不依赖真实字体 |
+| 全量测试 | 503 个，36 个 error 全是沙箱缺 ffmpeg（与 10-30 基线一致），无回归 |
+
+### 5. 手工重渲事故那场的完整命令（可复用）
+
+源视频 50-55 分钟有损坏帧，单次渲染必崩，用 `-f segment` 连续解码分段 +
+`scale` 修 stride：
+
+```bash
+ffmpeg -y -fflags +discardcorrupt+genpts \
+  -i src.ts \
+  -vf "subtitles=filename='src.ass',scale=720:1280,format=yuv420p" \
+  -c:v libx264 -preset medium -crf 28 -pix_fmt yuv420p -g 80 \
+  -c:a aac -b:a 128k -noautoscale \
+  -f segment -segment_time 600 -segment_format mp4 -reset_timestamps 1 seg_%02d.mp4
+# 再 concat
+ffmpeg -y -f concat -safe 0 -i list.txt -c copy -movflags +faststart out.mp4
+```
+
+**为什么用 `-f segment` 而不是 `-ss` 分段**：源 ts 时间轴有跳跃，
+`-ss X -t 600` 的实际输出时长不可控（实测出现过 1004 秒和 816 秒的段），
+拼接后总时长比源多 6 分钟。`-f segment` 是连续解码一次、按输出时间切段，
+每段精确 600 秒，`-reset_timestamps 1` 让每段时间戳归零便于 concat。
+
+**`scale` 为什么必须加**：`format=yuv420p` 只转像素格式，不重算 stride；
+`scale=720:1280` 强制重新分配缓冲，stride 才正确。
