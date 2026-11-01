@@ -28,7 +28,7 @@ import re
 import sys
 import time
 
-ROOT = r'F:\DanmakuRender_AutoUp'
+ROOT = r'F:\DanmakuRepo'
 REPLAY = os.path.join(ROOT, '直播回放')
 
 # 这些前缀/后缀表示"正在使用中"，绝对不能碰

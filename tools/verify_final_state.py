@@ -31,7 +31,7 @@ for line in m.group(1).strip().split('\n'):
 # 2. DMR 的上传命令没被污染
 print('\n[2] DMR 上传命令（global.yml）')
 import yaml
-g = yaml.safe_load(open(r'F:\DanmakuRender_AutoUp\configs\global.yml', encoding='utf-8'))
+g = yaml.safe_load(open(r'F:\DanmakuRepo\configs\global.yml', encoding='utf-8'))
 dv = (g.get('upload_args_task_default') or {}).get('dm_video') or []
 for one in dv:
     cmd = one.get('command') or []

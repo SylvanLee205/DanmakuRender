@@ -45,7 +45,7 @@ except ImportError:  # pragma: no cover
     print('（它在 requirements.txt 里，正常环境不该出现这条）')
     sys.exit(2)
 
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 DRY_RUN = '--dry-run' in sys.argv
 FORCE = '--force' in sys.argv
 GRACEFUL_TIMEOUT = 180          # 等 DMR 自己收尾的最长秒数

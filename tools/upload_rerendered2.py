@@ -5,7 +5,7 @@ import sqlite3
 import subprocess
 import time
 
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 RCLONE = r'C:\User Program Files\rclone-v1.75.1\rclone.exe'
 SVC = r'C:\Windows\System32\config\systemprofile\Waytech\CloudDrive2'
 

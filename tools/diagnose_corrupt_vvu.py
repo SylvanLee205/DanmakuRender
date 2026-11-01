@@ -12,7 +12,7 @@ import json
 import os
 import subprocess
 
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 VF = os.path.join(UP, '直播回放', 'vvu', 'vvu-2026年10月15日21点26分.mkv')
 DM = os.path.join(UP, '直播回放', 'vvu', 'vvu-2026年10月15日21点26分.ass')
 

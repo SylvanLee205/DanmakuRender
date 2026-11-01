@@ -17,8 +17,8 @@ import shutil
 import sys
 import time
 
-sys.path.insert(0, r'F:\DanmakuRender_AutoUp')
-os.chdir(r'F:\DanmakuRender_AutoUp')
+sys.path.insert(0, r'F:\DanmakuRepo')
+os.chdir(r'F:\DanmakuRepo')
 logging.basicConfig(level=logging.INFO,
                     format='%(levelname)s %(message)s')
 
@@ -29,7 +29,7 @@ TMP = os.path.join('.temp', '_journal_test')
 shutil.rmtree(TMP, ignore_errors=True)
 os.makedirs(TMP, exist_ok=True)
 
-JOURNAL = os.path.join(r'F:\DanmakuRender_AutoUp\logs', 'pending_clean.json')
+JOURNAL = os.path.join(r'F:\DanmakuRepo\logs', 'pending_clean.json')
 if os.path.exists(JOURNAL):
     os.replace(JOURNAL, JOURNAL + '.bak-test')
     print(f'  备份已有清单 -> {JOURNAL}.bak-test')

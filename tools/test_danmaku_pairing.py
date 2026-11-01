@@ -3,10 +3,10 @@
 import os
 import sys
 
-sys.path.insert(0, r'F:\DanmakuRender_AutoUp')
+sys.path.insert(0, r'F:\DanmakuRepo')
 from tools.recover_part import find_danmaku, _time_token
 
-D = r'F:\DanmakuRender_AutoUp\直播回放\vvu'
+D = r'F:\DanmakuRepo\直播回放\vvu'
 PARTS = [
     '[正在录制]vvu-20261005181052-0ba97a2cc0a511f1.flv.part',
     '[正在录制]vvu-20261005193103-3f5dedcdc0b011f1.flv.part',

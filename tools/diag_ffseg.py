@@ -6,15 +6,15 @@ import os
 import subprocess
 import sys
 
-sys.path.insert(0, r'F:\DanmakuRender_AutoUp')
-os.chdir(r'F:\DanmakuRender_AutoUp')
+sys.path.insert(0, r'F:\DanmakuRepo')
+os.chdir(r'F:\DanmakuRepo')
 import logging
 logging.basicConfig(level=logging.CRITICAL)
 
 from DMR.Config import Config
 from DMR.LiveAPI import LiveAPI
 
-cfg = Config(r'F:\DanmakuRender_AutoUp\configs\global.yml')
+cfg = Config(r'F:\DanmakuRepo\configs\global.yml')
 da = cfg.replay_config['_引擎测试']['download_args']
 adv = da.get('advanced_video_args') or {}
 stream_args = adv.get('ffmpeg_stream_args') or []

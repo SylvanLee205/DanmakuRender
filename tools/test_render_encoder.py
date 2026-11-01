@@ -16,9 +16,9 @@ import os
 import subprocess
 import time
 
-SRC = r'F:\DanmakuRender_AutoUp\直播回放\断尾人类\断尾的人类不会喵-2026年10月18日19点56分.mkv'
-DM = r'F:\DanmakuRender_AutoUp\直播回放\断尾人类\断尾的人类不会喵-2026年10月18日19点56分.ass'
-OUTDIR = r'F:\DanmakuRender_AutoUp\.temp'
+SRC = r'F:\DanmakuRepo\直播回放\断尾人类\断尾的人类不会喵-2026年10月18日19点56分.mkv'
+DM = r'F:\DanmakuRepo\直播回放\断尾人类\断尾的人类不会喵-2026年10月18日19点56分.ass'
+OUTDIR = r'F:\DanmakuRepo\.temp'
 os.makedirs(OUTDIR, exist_ok=True)
 
 # 失败点在 33:45 左右（2025 秒）。取 1980 起 90 秒覆盖它。

@@ -15,7 +15,7 @@ import sqlite3
 import subprocess
 import sys
 
-PROD = r'F:\DanmakuRender_AutoUp'
+PROD = r'F:\DanmakuRepo'
 REPLAY = os.path.join(PROD, '直播回放')
 DB = os.path.join(PROD, 'logs', 'dmr_state.db')
 RCLONE = None

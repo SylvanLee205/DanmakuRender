@@ -5,7 +5,7 @@ import sys
 
 import yaml
 
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 sys.path.insert(0, UP)
 os.chdir(UP)
 

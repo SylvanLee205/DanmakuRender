@@ -4,7 +4,7 @@ import subprocess
 import time
 
 # ── 1) default.yml ──
-P = r'F:\DanmakuRender_AutoUp\DMR\Config\default.yml'
+P = r'F:\DanmakuRepo\DMR\Config\default.yml'
 src = open(P, encoding='utf-8').read()
 if 'hw_retry' in src:
     print('  default.yml: 已存在，跳过')
@@ -36,7 +36,7 @@ else:
         print(f'  default.yml: 已在 output_resize 后插入 {len(block)} 行')
 
 # ── 2) 硬解测试 ──
-os.chdir(r'F:\DanmakuRender_AutoUp')
+os.chdir(r'F:\DanmakuRepo')
 SRC = r'直播回放\断尾人类\断尾的人类不会喵-2026年10月18日19点56分.mkv'
 DM = r'直播回放\断尾人类\断尾的人类不会喵-2026年10月18日19点56分.ass'
 OUT = r'.temp\_hwdec_test.mp4'

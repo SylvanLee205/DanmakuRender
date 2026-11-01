@@ -3,13 +3,13 @@
 
 两个仓库的分工
 --------------
-* **公开仓库**（`origin` → DanmakuRepo，分支 `prod-sync`）
+* **公开仓库**（`origin` → DanmakuRepo，分支 `main`）
   代码 + 文档，**脱敏**：不含 configs/、不含状态库、不含内网地址。
   内容 = `master` 的树 + 10 个发布脚手架文件（示例配置、脱敏工具等）。
 
 * **私有仓库**（`full` → DanmakuRepo-Full，分支 `main` = 本地 full-backup）
   完全体：`master` 的全部内容 **加上** `configs/`、`.temp/`、`logs/dmr_state.db`。
-  克隆下来放到 `F:\\DanmakuRender_AutoUp` 就能直接跑，跟生产机一模一样。
+  克隆下来放到 `F:\\DanmakuRepo` 就能直接跑，跟生产机一模一样。
 
 用法
 ----
@@ -20,8 +20,8 @@
 也不要推上去半截内容。
 
 两个 worktree（由 `git worktree` 维护，不在生产目录里切分支）：
-    F:\\DanmakuRender_AutoUp-prodsync   公开分支
-    F:\\DanmakuRender_AutoUp-full       私有完整副本
+    F:\\DanmakuRepo-prodsync   公开分支
+    F:\\DanmakuRepo-full       私有完整副本
 """
 import argparse
 import os
@@ -35,11 +35,11 @@ try:
 except Exception:
     pass
 
-PROD = r'F:\DanmakuRender_AutoUp'
-WT_PUBLIC = r'F:\DanmakuRender_AutoUp-prodsync'
-WT_FULL = r'F:\DanmakuRender_AutoUp-full'
+PROD = r'F:\DanmakuRepo'
+WT_PUBLIC = r'F:\DanmakuRepo-prodsync'
+WT_FULL = r'F:\DanmakuRepo-full'
 
-PUBLIC_BRANCH = 'prod-sync'
+PUBLIC_BRANCH = 'main'
 FULL_BRANCH = 'full-backup'
 FULL_REMOTE = 'full'
 
@@ -79,7 +79,7 @@ def master_dirty():
 
 # ---------------------------------------------------------------- 公开仓库
 def sync_public(apply):
-    """让 prod-sync 的树 == master 的树 + PUBLIC_EXTRAS。"""
+    """让 main 的树 == master 的树 + PUBLIC_EXTRAS。"""
     print('【公开仓库】%s (%s)' % (WT_PUBLIC, PUBLIC_BRANCH))
     if not os.path.isdir(WT_PUBLIC):
         print('  ! worktree 不存在，跳过')

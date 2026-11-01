@@ -12,7 +12,7 @@
 ------
 * ``logs/dmr_state.db`` 用 sqlite 的在线备份 API 复制，**不是**文件拷贝 ——
   DMR 正在写这个库，直接 cp 可能拿到半页状态，备份 API 出来的是一致的快照。
-* 只动 ``F:/DanmakuRender_AutoUp-full`` 这个 worktree，生产目录只读。
+* 只动 ``F:/DanmakuRepo-full`` 这个 worktree，生产目录只读。
 * 刻意不同步：直播回放(89G)、.venv(170M)、__pycache__、.trash、其余日志。
 
 用法
@@ -35,8 +35,8 @@ try:
 except Exception:
     pass
 
-PROD = r'F:\DanmakuRender_AutoUp'
-WT = r'F:\DanmakuRender_AutoUp-full'
+PROD = r'F:\DanmakuRepo'
+WT = r'F:\DanmakuRepo-full'
 
 # 需要同步的 .temp 文件（其余是历史日志/看门狗中间态，不进副本）
 TEMP_FILES = ['failed_renders.json', 'baidu_cooldown.json',

@@ -6,7 +6,7 @@ import os
 import subprocess
 import time
 
-REPLAY = r'F:\DanmakuRender_AutoUp\直播回放'
+REPLAY = r'F:\DanmakuRepo\直播回放'
 
 
 def ps(cmd):
@@ -97,7 +97,7 @@ print('=' * 78)
 print('4. DMR 日志里有没有弹幕相关错误')
 print('=' * 78)
 import glob
-logs = sorted(glob.glob(r'F:\DanmakuRender_AutoUp\logs\DMR-2026*.log'),
+logs = sorted(glob.glob(r'F:\DanmakuRepo\logs\DMR-2026*.log'),
               key=os.path.getmtime, reverse=True)
 hits = []
 for lg in logs[:2]:

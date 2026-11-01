@@ -12,7 +12,7 @@ import subprocess
 import sys
 import time
 
-PROD = r'F:\DanmakuRender_AutoUp'
+PROD = r'F:\DanmakuRepo'
 REPLAY = os.path.join(PROD, '直播回放')
 REMOTE_ROOT = 'cd2:百度网盘/DMR录播'
 RCLONE = r'C:\User Program Files\rclone-v1.75.1\rclone.exe'

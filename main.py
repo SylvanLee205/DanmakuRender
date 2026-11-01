@@ -335,7 +335,7 @@ def _verify_pipeline_switches(config, logger):
                 '      后果：渲染出的弹幕版只会留在本地，永远不会传到网盘。\n'
                 '      排查：\n'
                 '        1) 是否把 Mod 的配置同步到了生产？（Mod 里 auto_upload=False）\n'
-                '        2) git -C F:\\DanmakuRender_AutoUp diff -- configs/\n'
+                '        2) git -C F:\\DanmakuRepo diff -- configs/\n'
                 '        3) python tools\\backup_configs.py verify\n'
                 '      恢复：python tools\\backup_configs.py restore <快照名>\n'
                 '  ' + '!' * 58)

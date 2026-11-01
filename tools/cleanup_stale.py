@@ -10,10 +10,10 @@ import shutil
 import sys
 import time
 
-PROD = r'F:\DanmakuRender_AutoUp'
+PROD = r'F:\DanmakuRepo'
 # NOTE 2026-11-02: this constant used to point at another copy of the
 # project (no longer maintained). It now points at this project.
-MOD = r'F:\DanmakuRender_AutoUp'
+MOD = r'F:\DanmakuRepo'
 NOW = time.time()
 DRY = '--apply' not in sys.argv
 

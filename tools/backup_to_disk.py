@@ -16,10 +16,10 @@ import shutil
 import subprocess
 import sys
 
-PROD = r'F:\DanmakuRender_AutoUp'
+PROD = r'F:\DanmakuRepo'
 # NOTE 2026-11-02: this constant used to point at another copy of the
 # project (no longer maintained). It now points at this project.
-MOD = r'F:\DanmakuRender_AutoUp'
+MOD = r'F:\DanmakuRepo'
 REL = r'F:\_DMRelease'
 SNAP = r'F:\_DMR配置快照'
 

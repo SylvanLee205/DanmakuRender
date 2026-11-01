@@ -6,7 +6,7 @@ import glob
 import os
 import re
 
-REPLAY = r'F:\DanmakuRender_AutoUp\直播回放'
+REPLAY = r'F:\DanmakuRepo\直播回放'
 
 
 def date_of(name):

@@ -13,10 +13,10 @@ import subprocess
 import sys
 import zipfile
 
-PROD = r'F:\DanmakuRender_AutoUp'
+PROD = r'F:\DanmakuRepo'
 # NOTE 2026-11-02: this constant used to point at another copy of the
 # project (no longer maintained). It now points at this project.
-MOD = r'F:\DanmakuRender_AutoUp'
+MOD = r'F:\DanmakuRepo'
 RELEASE = r'F:\_DMRelease'
 OUT = r'D:\_cloud_upload'
 DATE = '20261019'

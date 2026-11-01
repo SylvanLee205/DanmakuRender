@@ -43,7 +43,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$root = 'F:\DanmakuRender_AutoUp'
+$root = 'F:\DanmakuRepo'
 $pythonw = Join-Path $root '.venv\Scripts\pythonw.exe'
 $script = Join-Path $root 'tools\autostart_launch.py'
 

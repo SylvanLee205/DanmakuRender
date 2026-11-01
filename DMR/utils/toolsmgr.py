@@ -122,7 +122,7 @@ def check_biliup():
                 raise RuntimeError(
                     'tools/biliup.exe 缺失。它是**启动时强制检查**的依赖'
                     '（即使录制引擎用 ffmpeg 也会检查）。'
-                    '请把 F:\\DanmakuRender_AutoUp\\tools\\biliup.exe 拷贝回本目录 tools/ 下。')
+                    '请把 F:\\DanmakuRepo\\tools\\biliup.exe 拷贝回本目录 tools/ 下。')
 
             import requests
             r = requests.get('https://github.com/biliup/biliup/releases/download/v1.1.28/biliupR-v1.1.28-x86_64-windows.zip', stream=True)

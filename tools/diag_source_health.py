@@ -3,7 +3,7 @@ import collections
 import os
 import subprocess
 
-SRC = r'F:\DanmakuRender_AutoUp\直播回放\断尾人类\断尾的人类不会喵-2026年10月18日19点56分.mkv'
+SRC = r'F:\DanmakuRepo\直播回放\断尾人类\断尾的人类不会喵-2026年10月18日19点56分.mkv'
 
 print('=' * 74)
 print('完整解码源文件（ffmpeg -v error -i <src> -f null -）')

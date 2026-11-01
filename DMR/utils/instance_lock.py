@@ -25,7 +25,7 @@ ctypes 缺失等）都返回 None，让调用方照常启动。
 """
 import sys
 
-MUTEX_NAME = r'Global\DanmakuRender_AutoUp_SingleInstance'
+MUTEX_NAME = r'Global\DanmakuRepo_SingleInstance'
 ERROR_ALREADY_EXISTS = 183
 
 #: 持有句柄，进程存活期间不能被回收

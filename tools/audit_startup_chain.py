@@ -1,7 +1,7 @@
 """复查：启动链路 + 配置键核对。
 
 启动链路（用户明确要求过"确保所有的启动脚本都指向他包括开机自启动的脚本"）：
-    1. F:\\DanmakuRender_AutoUp\\Start_Render.bat
+    1. F:\\DanmakuRepo\\Start_Render.bat
     2. 启动文件夹的快捷方式
     3. 计划任务
     4. bat 内容是否指向正确目录 + 编码是否安全
@@ -11,7 +11,7 @@ import re
 import subprocess
 import sys
 
-PROD = r'F:\DanmakuRender_AutoUp'
+PROD = r'F:\DanmakuRepo'
 
 
 def ps(cmd):
@@ -42,7 +42,7 @@ else:
     # 关键检查
     txt = raw.decode('ascii', errors='replace')
     checks = [
-        ('指向 DanmakuRender_AutoUp', 'DanmakuRender_AutoUp' in txt),
+        ('指向 DanmakuRepo', 'DanmakuRepo' in txt),
         ('用 .venv 的 python', '.venv' in txt),
         ('调用 main.py', 'main.py' in txt),
         ('有 --quiet', '--quiet' in txt),
@@ -70,7 +70,7 @@ if os.path.exists(lnk):
     print(f'    目标: {t}')
     print(f'    参数: {a}')
     print(f'    工作目录: {w}')
-    print(f'    {"✅ 指向正确" if "DanmakuRender_AutoUp" in t else "❌ 指向错误！"}')
+    print(f'    {"✅ 指向正确" if "DanmakuRepo" in t else "❌ 指向错误！"}')
 
 print()
 print('=' * 78)

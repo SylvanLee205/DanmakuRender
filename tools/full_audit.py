@@ -13,7 +13,7 @@ import re
 import subprocess
 import sys
 
-PROD = r'F:\DanmakuRender_AutoUp'
+PROD = r'F:\DanmakuRepo'
 sys.path.insert(0, PROD)
 os.chdir(PROD)
 

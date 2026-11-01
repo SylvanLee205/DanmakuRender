@@ -16,7 +16,7 @@ import shutil
 import subprocess
 import time
 
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 APP_DIR = r'C:\Program Files\CloudDrive'
 APP_CFG = os.path.join(os.environ['LOCALAPPDATA'], 'CloudDrive.WinUI')
 SVC_DIR = r'C:\Program Files\CloudDrive2'

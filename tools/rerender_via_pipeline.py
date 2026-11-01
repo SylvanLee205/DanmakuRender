@@ -10,8 +10,8 @@ import os
 import sys
 import time
 
-sys.path.insert(0, r'F:\DanmakuRender_AutoUp')
-os.chdir(r'F:\DanmakuRender_AutoUp')
+sys.path.insert(0, r'F:\DanmakuRepo')
+os.chdir(r'F:\DanmakuRepo')
 logging.basicConfig(
     level=logging.INFO,
     format='  [%(levelname)s] %(name)s: %(message)s')
@@ -28,7 +28,7 @@ if os.path.exists(OUT):
     print(f'  删除已有输出: {os.path.getsize(OUT)/1024**2:.1f} MB')
     os.remove(OUT)
 
-cfg = Config(r'F:\DanmakuRender_AutoUp\configs\global.yml')
+cfg = Config(r'F:\DanmakuRepo\configs\global.yml')
 r = DmRender(**cfg.global_config['render_args']['dmrender'])
 
 print('=' * 74)

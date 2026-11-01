@@ -7,12 +7,12 @@ import os
 import sys
 
 TARGETS = [
-    r'F:\DanmakuRender_AutoUp\DMR\Task\liveevents.py',
-    r'F:\DanmakuRender_AutoUp\DMR\Task\replaytask.py',
-    r'F:\DanmakuRender_AutoUp\DMR\Render\dmrender.py',
-    r'F:\DanmakuRender_AutoUp\DMR\Cleaner\__init__.py',
-    r'F:\DanmakuRender_AutoUp\DMR\Render\__init__.py',
-    r'F:\DanmakuRender_AutoUp\DMR\Uploader\__init__.py',
+    r'F:\DanmakuRepo\DMR\Task\liveevents.py',
+    r'F:\DanmakuRepo\DMR\Task\replaytask.py',
+    r'F:\DanmakuRepo\DMR\Render\dmrender.py',
+    r'F:\DanmakuRepo\DMR\Cleaner\__init__.py',
+    r'F:\DanmakuRepo\DMR\Render\__init__.py',
+    r'F:\DanmakuRepo\DMR\Uploader\__init__.py',
 ]
 
 #: 这些是 dunder / 框架回调 / 属性访问式引用，不算孤儿

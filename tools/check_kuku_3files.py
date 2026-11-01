@@ -10,7 +10,7 @@
 import os
 import time
 
-D = r'F:\DanmakuRender_AutoUp\直播回放\哭哭不嘻嘻'
+D = r'F:\DanmakuRepo\直播回放\哭哭不嘻嘻'
 
 
 def snap():

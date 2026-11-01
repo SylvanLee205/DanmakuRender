@@ -16,7 +16,7 @@ import subprocess
 import sys
 import time
 
-PROD = r'F:\DanmakuRender_AutoUp'
+PROD = r'F:\DanmakuRepo'
 DB = os.path.join(PROD, 'logs', 'dmr_state.db')
 RCLONE = r'C:\User Program Files\rclone-v1.75.1\rclone.exe'
 

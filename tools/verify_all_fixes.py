@@ -5,7 +5,7 @@ import logging
 import os
 import sys
 
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 sys.path.insert(0, UP)
 os.chdir(UP)
 logging.basicConfig(level=logging.ERROR)

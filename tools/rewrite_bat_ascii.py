@@ -25,7 +25,7 @@ import os
 import shutil
 import time
 
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 BAT = os.path.join(UP, 'Start_Render.bat')
 NOTIFY = os.path.join(UP, 'notify_content.txt')
 
@@ -50,7 +50,7 @@ title DMR_Guard
 
 rem --- config ---
 set "API_URL=https://17530.push.ft07.com/send/sctp17530thl3urer2dsbnw3rnqyxzep.send"
-set "NOTIFY_FILE=F:\DanmakuRender_AutoUp\notify_content.txt"
+set "NOTIFY_FILE=F:\DanmakuRepo\notify_content.txt"
 rem ---------------
 
 :loop
@@ -64,7 +64,7 @@ curl -s -m 15 --data-urlencode "title=DanmakuRepo" --data-urlencode "desp@%NOTIF
 
 rem switch to project drive and dir
 F:
-cd "F:\DanmakuRender_AutoUp"
+cd "F:\DanmakuRepo"
 
 rem run in venv (quiet: only key progress + warnings)
 ".\.venv\Scripts\python.exe" main.py --quiet

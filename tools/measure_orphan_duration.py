@@ -9,8 +9,8 @@ import re
 import subprocess
 import time
 
-D = r'F:\DanmakuRender_AutoUp\直播回放\哭哭不嘻嘻'
-DM = r'F:\DanmakuRender_AutoUp\直播回放\哭哭不嘻嘻（弹幕版）'
+D = r'F:\DanmakuRepo\直播回放\哭哭不嘻嘻'
+DM = r'F:\DanmakuRepo\直播回放\哭哭不嘻嘻（弹幕版）'
 
 
 def real_duration(p):

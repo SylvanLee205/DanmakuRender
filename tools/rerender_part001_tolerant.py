@@ -15,8 +15,8 @@ import subprocess
 import sys
 import time
 
-sys.path.insert(0, r'F:\DanmakuRender_AutoUp')
-os.chdir(r'F:\DanmakuRender_AutoUp')
+sys.path.insert(0, r'F:\DanmakuRepo')
+os.chdir(r'F:\DanmakuRepo')
 import logging
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 
@@ -49,7 +49,7 @@ def main():
         print(f'  ❌ 源不存在: {SRC}')
         return 1
 
-    cfg = Config(os.path.join(r'F:\DanmakuRender_AutoUp', 'configs', 'global.yml'))
+    cfg = Config(os.path.join(r'F:\DanmakuRepo', 'configs', 'global.yml'))
     ra = dict(cfg.global_config['render_args']['dmrender'])
 
     # 输入侧容错：hwaccel_args 会被插在 -i 之前

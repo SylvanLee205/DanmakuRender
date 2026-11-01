@@ -10,7 +10,7 @@ import shutil
 import sqlite3
 import subprocess
 
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 REPLAY = os.path.join(UP, '直播回放')
 SVC = r'C:\Windows\System32\config\systemprofile\Waytech\CloudDrive2'
 TMP = os.environ['TEMP']

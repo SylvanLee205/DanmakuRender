@@ -19,7 +19,7 @@ import os
 import sys
 import tempfile
 
-ROOT = r'F:\DanmakuRender_AutoUp'
+ROOT = r'F:\DanmakuRepo'
 sys.path.insert(0, ROOT)
 os.chdir(ROOT)
 

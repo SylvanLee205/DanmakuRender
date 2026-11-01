@@ -5,7 +5,7 @@ import re
 import subprocess
 import time
 
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 logs = sorted(glob.glob(os.path.join(UP, 'logs', 'DMR-2026*.log')),
               key=os.path.getmtime, reverse=True)
 
