@@ -199,12 +199,23 @@ def chk_process():
         add(WARN, 'psutil 未安装', '', '无法检查进程状态。pip install psutil')
         return
     procs = []
-    for p in psutil.process_iter(['pid', 'cmdline']):
+    for p in psutil.process_iter(['pid', 'cmdline', 'cwd']):
         try:
             cmd = ' '.join(p.info.get('cmdline') or [])
         except Exception:
             continue
-        if 'main.py' in cmd and PROJ.lower() in cmd.lower().replace('/', '\\'):
+        if 'main.py' not in cmd:
+            continue
+        # 命中条件：命令行里带项目路径，**或**工作目录是项目根。
+        # ⚠️ 只比命令行的绝对路径会漏 —— DMR 是用
+        #    `cd /d <项目根>` + `python main.py` 启动的，
+        #    cmdline 里只有相对路径 "main.py"，不含盘符。
+        #    2026-11-02 就因为只匹绝对路径，误报"没有在运行"。
+        try:
+            cwd = (p.info.get('cwd') or '').lower()
+        except Exception:
+            cwd = ''
+        if PROJ.lower() in cmd.lower().replace('/', '\\') or cwd == PROJ.lower():
             procs.append(p.info['pid'])
     if procs:
         add(OK, 'DMR 进程', f'正在运行 (PID {", ".join(map(str, procs))})')
