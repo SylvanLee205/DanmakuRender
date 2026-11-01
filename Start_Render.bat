@@ -20,18 +20,30 @@ chcp 65001 <nul >nul
 
 title DMR_Guard
 
+rem Work from wherever this file lives.
+rem NOTE 2026-11-02: a bare "F:" used to sit right below. On a machine with
+rem no F: drive that line silently fails; if the project moved to another
+rem drive it switched the cwd to the WRONG drive first. cd /d handles both.
+cd /d "%~dp0"
+
+rem -- resolve the Python interpreter (venv / portable / py launcher / PATH) --
+rem    Done ONCE before the restart loop, not inside it.
+call "%~dp0_env.bat"
+if errorlevel 1 (
+  echo [X] No Python 3 found on this machine.
+  echo     Run Setup.bat once ^(double-click it^) - it installs everything.
+  pause
+  exit /b 1
+)
+
 :loop
 cls
 echo [%date% %time%] Starting DanmakuRepo ...
 
-rem switch to project drive and dir
-F:
-cd /d "%~dp0"
-
-rem run in venv
+rem run in the resolved interpreter
 rem   --quiet : keep all INFO (so each streamer's load/live state is visible)
 rem             but filter out the engine message-dict noise
-".\.venv\Scripts\python.exe" main.py --quiet
+"%DMR_PY%" main.py --quiet
 
 echo.
 echo [%date% %time%] WARNING: program exited (crash or manual close).

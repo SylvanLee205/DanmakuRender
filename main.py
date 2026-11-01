@@ -213,7 +213,12 @@ def _verify_configs(config, logger):
                            '请确认是否被误删。', len(tasks))
 
         # 3. 和最近快照对比
-        snap_root = r'F:\_DMR配置快照'
+        # ⚠️ 2026-11-02：原来写死 F:\_DMR配置快照（项目外）。换盘符/换机器就失效，
+        #    而且新机根本没有那个目录 → 这一段静默跳过，等于自检少了一项。
+        #    现在统一走 DMR.paths：默认 <项目>/backups/配置快照，可用
+        #    环境变量 DMR_SNAPSHOT_DIR 覆盖，并会自动把旧的 F:\ 快照复制过来。
+        from DMR.paths import snapshot_dir
+        snap_root = snapshot_dir()
         try:
             if os.path.isdir(snap_root):
                 snaps = sorted(d for d in os.listdir(snap_root)

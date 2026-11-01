@@ -53,6 +53,21 @@ print()
 print('2. Uploader 能否用 subprocess 引擎创建')
 from DMR.Uploader import Uploader
 
+
+def _tool(name):
+    """定位外部工具：环境变量 -> tools/ -> PATH -> 注册表 PATH -> 安装目录。
+
+    见 DMR/utils/toolsmgr.py。不写死版本号和安装位置 ——
+    换个 rclone 版本、换台电脑都不用改代码。
+    """
+    import os as _o
+    import sys as _s
+    _root = _o.path.dirname(_o.path.dirname(_o.path.abspath(__file__)))
+    if _root not in _s.path:
+        _s.path.insert(0, _root)
+    from DMR.utils.toolsmgr import find_tool
+    return find_tool(name) or name
+
 try:
     task = {
         'engine': 'subprocess',
@@ -80,7 +95,11 @@ print('3. 上传命令模板替换（{PATH} / {TASKNAME}）')
 try:
     from DMR.utils import VideoInfo, StreamerInfo
     from DMR.utils.utils import replace_keywords
-    vi = VideoInfo(path=r'F:\tmp\测试主播-2026年10月15日20点00分（弹幕版）.mp4',
+    # 用构造出来的假路径即可 —— 这里只验证 {PATH}/{TASKNAME} 的替换，
+    # 文件不必真实存在（原来是写死的 F:\tmp\...，换机器就失效）
+    _fake = os.path.join(_PROJECT_ROOT, '直播回放', '测试主播',
+                         '测试主播-2026年10月15日20点00分（弹幕版）.mp4')
+    vi = VideoInfo(path=_fake,
                    streamer=StreamerInfo(name='测试主播'),
                    taskname='测试主播', dtype='dm_video')
     cmd_tpl = (dmv or [{}])[0].get('command') or []
@@ -172,7 +191,7 @@ except Exception as e:
 print()
 print('8. 实际 rclone 连通性（只读，不传文件）')
 rclone_exe = None
-for p in (r'C:\User Program Files\rclone-v1.75.1\rclone.exe', 'rclone'):
+for p in (_tool('rclone'), 'rclone'):
     if p == 'rclone' or os.path.exists(p):
         rclone_exe = p
         break

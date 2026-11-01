@@ -8,6 +8,13 @@
 - 崩溃能自愈：开机自启、跨会话迁移、优雅停止、启动对账、孤儿分段接管
 - 有 **506 个模块级测试**兜底
 
+> **第一次用？就三步：**
+> 1. 双击 **`Setup.bat`** —— 装环境（Python 虚拟环境、依赖、ffmpeg、rclone）
+> 2. 双击 **`Start_DMR.bat`** —— 开始录制
+> 3. 出任何问题双击 **`Doctor.bat`** —— 一键体检，直接告诉你哪里坏了、怎么修
+>
+> 三个脚本都在项目根目录，**放哪个盘都能跑**，不依赖特定路径。
+
 > **如果你是要接手这个项目的人或 AI**：这份 README 本身就是完整的交接文档，
 > 读完就能动手。跑起来之后的坑、出事了怎么救、为什么代码长成这样，都在下面。
 > 不需要看别的仓库、也不需要问原作者。
@@ -87,7 +94,19 @@ ffmpeg 拉流录制 → ts 分段（默认每小时一段）
 ## 三、架构与目录
 
 ```
+Setup.bat                首次安装 / 环境修复（幂等，随时可重跑）
+Start_DMR.bat            启动（守护循环，崩溃自动重拉）
+Doctor.bat               一键体检
+_env.bat                 所有 bat 共用：解析 Python 解释器 + 补全 PATH
+tools/                   30+ 运维工具，默认预览、加 --apply 才动手
+unit_tests/              506 个模块级测试
+configs/                 DMR-*.yml 任务配置；temp/ 是停用归档区
+logs/                    DMR-*.log 日志 + dmr_state.db 状态库
+直播回放/<主播>/          源视频；<主播>（弹幕版）/ 是成品
+
 DMR/
+  ├── paths.py           **所有路径的唯一来源**（根目录 / tools / logs / 快照…）
+  ├── notify.py          开播通知（Server酱³）
   ├── __init__.py        DanmakuRepo 主类：装配组件、启动对账（reconciler）
   ├── engine.py          插件式引擎：downloader / render / uploader / cleaner 各自线程
   ├── Config/            配置合并（default.yml ← global.yml ← 任务 yml）
@@ -97,12 +116,8 @@ DMR/
   ├── Uploader/          rclone 上传
   ├── Cleaner/           延迟清理 + 待删清单（logs/pending_clean.json）
   ├── state/             SQLite 状态库 + 启动对账
+  ├── utils/toolsmgr.py  外部工具定位（ffmpeg / rclone / biliup，不锁版本）
   └── Task/liveevents.py 事件中枢：开播/下播/渲染/上传/清理判定（改动最多）
-tools/                   30+ 运维工具，默认预览、加 --apply 才动手
-unit_tests/              506 个模块级测试
-configs/                 DMR-*.yml 任务配置；temp/ 是停用归档区
-logs/                    DMR-*.log 日志 + dmr_state.db 状态库
-直播回放/<主播>/          源视频；<主播>（弹幕版）/ 是成品
 ```
 
 **三个最重要的路径**：
@@ -113,26 +128,84 @@ logs/                    DMR-*.log 日志 + dmr_state.db 状态库
 | `logs/dmr_state.db` | 状态库。哪些分段录完/渲完/传完/清完。重启不丢，也是续跑依据 |
 | `直播回放/<主播>/` | 源视频（24h 后自动删）；`（弹幕版）` 子目录永久保留 |
 
+**关于路径的硬规则**：新代码不许写死盘符，也不许用 `./xxx` 这种依赖当前工作
+目录的写法。一律 `from DMR.paths import p, ROOT`。
+`paths.py` 里还有一个 `enter_root()`，入口脚本早期调一次就够。
+
 ---
 
 ## 四、从零跑起来
 
-### 依赖
+### 一句话版本
 
-```bash
-python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt
-```
+下载代码 → 双击 **`Setup.bat`** → 双击 **`Start_DMR.bat`**。
 
-需要 **Python 3.11**、**ffmpeg**（放 `tools/` 或加进 PATH）、**rclone**（上传用）、
-**CloudDrive2**（可选，把网盘挂成盘符给 rclone 用）。
-`requirements.txt` 里除常规项外还有 `psutil`（进程管理）和 `fonttools`（字形检测）。
+`Setup.bat` 依次处理：找 Python → 建 `.venv` → 装依赖 → 找/下载
+ffmpeg、rclone → 生成 `configs/global.yml` →（可选）建桌面快捷方式和开机任务。
+每一步都幂等，**环境坏了随时再跑一遍**就是修复。
+
+### 依赖：不锁版本
+
+| 依赖 | 要求 | 缺了会怎样 |
+|---|---|---|
+| Python | **3.9 以上都能跑**（推荐 3.11+，开发机 3.11.9） | 没有就无法启动 |
+| ffmpeg / ffprobe | 任意较新版本 | **硬依赖**，缺了录不了 |
+| rclone | 任意较新版本 | 只影响网盘上传 |
+| biliup | 可选 | 只有 B 站上传才需要 |
+| CloudDrive2 | 可选 | 把网盘挂成盘符给 rclone 用 |
+
+**为什么不写死版本号**：上游哪天停止维护某个版本，用户装新的照样能跑。
+代码只验证「这个 exe 能不能执行」，**不解析版本号**。
+
+**工具放哪都能被找到**，查找顺序：
+
+1. 环境变量 `DMR_FFMPEG` / `DMR_RCLONE` / `DMR_BILIUP`（写完整路径）
+2. 项目 `tools\` 目录
+3. 系统 PATH
+4. **注册表里的最新 PATH** —— 进程环境的 PATH 是启动那一刻的快照，
+   用户刚装完工具时它还是旧的，只查进程 PATH 会误报"没装"
+5. `C:\Program Files\...`、`C:\User Program Files\...` 下名字带工具名的目录
+
+手动装也行：`winget install ffmpeg` / `winget install rclone`，
+或者把 exe 直接丢进 `tools\`。
+
+### 路径：放哪个盘都行
+
+项目里**没有任何写死的盘符**。所有路径都从 `DMR/paths.py` 的 `ROOT` 派生
+（= 该文件所在包的上一级），所以克隆到 `D:\工具\DMR` 也能直接跑。
+启动脚本全部用 `%~dp0`，不再有 `F:` 开头的切盘命令。
+
+要换数据位置就设环境变量：
+
+| 变量 | 作用 | 默认 |
+|---|---|---|
+| `DMR_DATA_ROOT` | 录制数据根目录 | 项目根 |
+| `DMR_SNAPSHOT_DIR` | 配置快照目录 | `<项目>\backups\配置快照` |
+| `DMR_BACKUP_DIR` | 大件备份目录 | `<项目>\backups` |
+
+> 旧版本的配置快照写在 `F:\_DMR配置快照`（项目外）。第一次运行新版时，
+> 如果新位置为空、旧位置存在，会**自动复制**一份过来（只复制，不删原件）。
 
 ### 启动
 
-```bash
-Start_DMR.bat          # 守护循环，进程退出后 10 秒自动重拉
+```bat
+Start_DMR.bat          :: 守护循环，进程退出后 10 秒自动重拉（有窗口）
 ```
+
+所有启动脚本都通过 `_env.bat` 解析解释器，顺序是
+`.venv` → 项目内 `python\` → `py -3` → PATH 里的 `python`。
+所以**没跑过 Setup.bat 但机器上已有 Python** 时，直接双击也能起。
+
+### 桌面快捷方式
+
+```bat
+python tools\install_desktop_links.py        :: 建 6 个常用入口
+python tools\install_desktop_links.py --all  :: 再加"推送全部"
+```
+
+生成的是**真正的 .lnk**，指向项目里的 bat。项目挪了位置只要重跑一次。
+桌面上那些旧的 .bat 副本会被移到 `backups\desktop-shortcuts-<日期>\`（不是删除）。
+**用户自己的 yml 模板（`DMR-某某.yml`）永远不动。**
 
 ### 三层自启（生产机已配好，换机器要重建）
 
@@ -142,36 +215,35 @@ Start_DMR.bat          # 守护循环，进程退出后 10 秒自动重拉
 | 2 | 计划任务 `DMR_SessionWatch` | 登录 + 解锁 | 把 DMR 迁到当前会话，窗口跟着人走 |
 | 3 | 计划任务 `DMR_Boot` | 开机 | session 0 常驻守护，无人登录时兜底 |
 
-重建：`Fix_Boot_Task.bat`（第 3 层）、`tools/install_session_tasks.ps1`（第 2 层）、
-把等价内容放一份到 Startup 目录（第 1 层）。都需要管理员权限。
+重建第 3 层：`python tools\install_boot_task.py`（需管理员，会自己提权）。
+它**运行时生成任务**，不再依赖 `tools/boot_task.xml` 那个写死路径的模板。
+第 2 层：`tools/install_session_tasks.ps1`。第 1 层：往 Startup 目录放一份等价 cmd。
 
 > 计划任务拉起的进程**窗口必然隐藏**（Windows 行为，不是 bug）。
-> 要窗口只能由用户交互启动 —— 双击 `DMR-启动.bat`。
+> 要窗口只能由用户交互启动 —— 双击 `DMR-启动`。
 
 ### 换机器 / 灾难恢复
 
-代码在公开仓库，**能直接跑起来的东西在私有仓库 `DanmakuRepo-Full`**：
-它除了代码还有 `configs/`（含 33 个主播链接）和 `logs/dmr_state.db`。
-**克隆到任意目录都行**，不用放在特定路径：
+能直接跑起来的东西在私有仓库 `DanmakuRepo-Full`：除了代码还有 `configs/`
+（含全部主播链接）和 `logs/dmr_state.db`。**克隆到任意目录都行**：
 
-```bash
+```bat
 git clone https://github.com/SylvanLee205/DanmakuRepo-Full
 cd DanmakuRepo-Full
-python -m venv .venv && .venv\Scripts\pip install -r requirements.txt
-# 装 ffmpeg（放 tools/ 或加进 PATH）和 rclone，然后：
+Setup.bat
 Start_DMR.bat
 ```
 
-**三个硬性前提**（缺一个都起不来）：
+**只有 ffmpeg 是真正的硬前提**，其余缺了都能跑（功能打折）：
 
-| 前提 | 说明 |
+| 缺什么 | 后果 |
 |---|---|
-| Python 3.11 | 3.12+ 未验证，`requirements.txt` 按 3.11 锁的 |
-| **ffmpeg** | 放 `tools/` 或进 PATH。**缺了连配置都加载不了**（会在 `check_ffmpeg` 卡住问你要安装） |
-| rclone | 上传用。不装只影响上传，录制渲染照常 |
+| Python（3.9+） | 完全起不来。`Setup.bat` 会提示下载地址并打开浏览器 |
+| **ffmpeg / ffprobe** | 录不了。`Setup.bat` 可自动下载到 `tools\` |
+| rclone | 录制渲染照常，只是不传网盘 |
+| CloudDrive2 | 上传通道不通（rclone 的目标盘不存在） |
 
-> 计划任务需要自己重建（`Fix_Boot_Task.bat` / `tools/install_session_tasks.ps1`
-> 都会按**当前所在目录**生成动作路径，不会指错）。纯手动跑则不建也能用。
+计划任务要自己重建（见上一节）。纯手动跑则不建也能用。
 
 ⚠️ 私有仓库含主播直播间链接，**绝不能改成 public**。
 
@@ -281,11 +353,17 @@ ffprobe -v error -show_entries format=duration -of csv=p=0 "xxx.mp4"
 
 **通用三步**：
 
-```bash
-python tools/dmr-status.ps1                       # 1. 看状态
-grep "\[error\]" logs/DMR-*.log | tail -20        # 2. 看最近的错
-python tools/stop_dmr.py && Start_DMR.bat         # 3. 优雅重启
+```bat
+Doctor.bat                                        :: 1. 一键体检（先跑这个）
+python tools/dmr-status.ps1                       :: 2. 看整体状态
+findstr /C:"[error]" logs\DMR-*.log               :: 3. 看最近的错
+python tools\stop_dmr.py                          :: 4. 优雅停止
+Start_DMR.bat                                     :: 5. 重启
 ```
+
+`Doctor.bat` 会逐项检查 Python / 依赖 / ffmpeg / rclone / 磁盘 / 配置 /
+状态库 / 进程 / 计划任务 / 通知通道，每条都给出「现状 + 怎么修」。
+加 `--export` 会打包一份诊断 zip 到 `.temp\`，直接发给 AI 就能定位问题。
 
 ---
 
@@ -295,12 +373,19 @@ python tools/stop_dmr.py && Start_DMR.bat         # 3. 优雅重启
 
 | 工具 | 干什么 |
 |---|---|
+| `bootstrap.py` | **首次安装 / 环境修复**：venv、依赖、ffmpeg、rclone、配置 |
+| `doctor.py` | **一键体检**，`--export` 打诊断包 |
+| `install_desktop_links.py` | 在桌面建 .lnk 快捷方式（`--all` 含推送脚本） |
+| `install_boot_task.py` | 注册/注销开机计划任务（运行时生成，不依赖 XML 模板） |
 | `add_room.py` | 读剪贴板链接 → 自动取名 → 写 `configs/`，热加载 |
 | `stop_dmr.py` | **优雅停止**：ffmpeg 收到 `q` 写完当前段并改名，超时才硬杀 |
 | `autostart_launch.py` | 登录自启 + 跨会话迁移（窗口跟着人走） |
 | `rename_orphans.py` | 把 `[正在录制]` 孤儿登记进状态库，启动对账自动接管 |
 | `clean_skipped_backlog.py` | 清"命中跳过上传规则却永不清理"的积压源视频 |
 | `purge_task_state.py` | 清停用任务的状态库记录（先备份 .db） |
+| `backup_configs.py` | 配置快照：snapshot / verify / list / restore |
+| `backup_to_disk.py` | 整个项目异盘备份（自动挑盘，可 `--with-videos`） |
+| `pack_cloud_backup.py` | 打包代码 + git 历史 + bundle，传网盘做异地副本 |
 | `sync_full_backup.py` | 同步 `configs/` + 状态库到私有完整副本 |
 | `push_all.py` | **一条命令推两个仓库**：公开（脱敏）+ 私有（完全体），默认预览 |
 | `install_session_tasks.ps1` | 幂等重建 SessionWatch / Desktop 计划任务 |
@@ -315,11 +400,11 @@ python tools/stop_dmr.py && Start_DMR.bat         # 3. 优雅重启
 python -B -m unittest discover -s unit_tests -t .
 ```
 
-**506 个测试。** 在没有 ffmpeg 的环境里会有 **36 个 error**（报"找不到 ffmpeg"），
-那是环境限制不是回归 —— 改动前后对比这个数字就知道有没有搞坏东西。
+**506 个测试，全绿（5 个 expected failure）。**
 
-> ⚠️ 在管道/自动化环境里跑测试要加 `< /dev/null`，否则 `toolsmgr.check_ffmpeg`
-> 的 `input()` 会一直等着，看起来像卡死。
+> 旧版本在找不到 ffmpeg 时会 `input()` 等你回车，无控制台环境下表现为卡死。
+> 2026-11-02 起 `toolsmgr` 里**已无任何 `input()`**：找不到就打印指引 +
+> 写 `logs/startup_error.log` 并退出，不再挂住。
 
 **改代码前的三条**：
 

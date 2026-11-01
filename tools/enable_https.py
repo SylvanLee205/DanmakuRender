@@ -21,6 +21,21 @@ import shutil
 import subprocess
 import time
 
+
+def _tool(name):
+    """定位外部工具：环境变量 -> tools/ -> PATH -> 注册表 PATH -> 安装目录。
+
+    见 DMR/utils/toolsmgr.py。不写死版本号和安装位置 ——
+    换个 rclone 版本、换台电脑都不用改代码。
+    """
+    import os as _o
+    import sys as _s
+    _root = _o.path.dirname(_o.path.dirname(_o.path.abspath(__file__)))
+    if _root not in _s.path:
+        _s.path.insert(0, _root)
+    from DMR.utils.toolsmgr import find_tool
+    return find_tool(name) or name
+
 SVC_ROOT = r'C:\Windows\System32\config\systemprofile\Waytech\CloudDrive2'
 CFG = os.path.join(SVC_ROOT, 'config.toml')
 SVC = 'CloudDrive2'
@@ -128,7 +143,7 @@ print()
 print('=' * 78)
 print('6. rclone（走 127.0.0.1:19798 HTTP，不受影响）')
 print('=' * 78)
-r = subprocess.run([r'C:\User Program Files\rclone-v1.75.1\rclone.exe',
+r = subprocess.run([_tool('rclone'),
                     'lsf', 'cd2:百度网盘/DMR录播', '--max-depth', '1'],
                    capture_output=True, text=True, encoding='utf-8',
                    errors='replace', timeout=300)

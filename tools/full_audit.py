@@ -29,8 +29,9 @@ p = os.path.join(PROD, 'configs', 'global.yml')
 cur = yaml.safe_load(open(p, encoding='utf-8')) or {}
 print(f'  当前 {len(cur)} 个顶级键: {sorted(cur)}')
 
-# 找快照里的 global.yml 对比
-snap_root = r'F:\_DMR配置快照'
+# 找快照里的 global.yml 对比（快照目录现在跟着项目走，不再是 F:\ 根目录）
+from DMR.paths import snapshot_dir
+snap_root = snapshot_dir()
 snaps = sorted(d for d in os.listdir(snap_root)
                if os.path.isdir(os.path.join(snap_root, d))) if os.path.isdir(snap_root) else []
 if snaps:

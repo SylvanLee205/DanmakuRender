@@ -1,3 +1,17 @@
+# DanmakuRepo 的 Python 依赖。
+#
+# 关于版本：
+#   这里**故意不钉版本号**（除了一个下限），因为上游停止维护某个版本时，
+#   用户装新的应该照样能跑。setup 时 pip 会取当前最新兼容版。
+#   实测可用范围：Python 3.9 ~ 3.13。
+#
+#   出问题时的排查顺序：
+#     1) 双击 Doctor.bat
+#     2) 或执行 .venv\Scripts\python.exe -m pip install -r requirements.txt
+#
+# 外部程序（ffmpeg / rclone / biliup）不在这个文件里 —— 它们不是 pip 包，
+# 由 DMR/utils/toolsmgr.py 在运行时定位或由 Setup.bat 下载。
+
 requests
 aiohttp
 jsengine
@@ -21,6 +35,6 @@ flask
 dmconvert
 
 
-# ── 测试依赖（仅运行 unit_tests 需要，DMR 运行时不依赖）──
-# 上游漏声明；不装的话 test_downloader_memory.py 整个文件被跳过
+# ── 进程与诊断（Doctor.bat / stop_dmr.py / doctor.py 需要）──
+# 上游把它列在测试依赖里，实际上运行时也用它做进程管理。
 psutil

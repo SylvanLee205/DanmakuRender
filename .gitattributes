@@ -1,0 +1,27 @@
+# 换行符归一化。
+#
+# 为什么必须管这个：
+#   cmd.exe 解析 .bat 时对纯 LF 的处理很不稳（尤其带 goto 标签和括号块时），
+#   表现为"点了没反应"或"命令找不到"，而且完全看不出原因。
+#   2026-11-02 有一次提交把 bat 写成了 LF，差点让所有启动脚本失效。
+
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+
+# 脚本保持 LF 即可
+*.py    text eol=lf
+*.sh    text eol=lf
+*.yml   text eol=lf
+*.md    text eol=lf
+
+# 二进制
+*.exe   binary
+*.dll   binary
+*.png   binary
+*.jpg   binary
+*.mp4   binary
+*.mkv   binary
+*.flv   binary
+*.db    binary
+*.zip   binary

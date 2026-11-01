@@ -11,7 +11,8 @@ import time
 
 NEW = os.path.join(os.environ['LOCALAPPDATA'], 'CloudDrive.WinUI')
 APP = r'C:\Program Files\CloudDrive\CloudDrive.exe'
-BK = os.path.join(r'F:\_CD2配置备份_20261005',
+BK = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                  'backups', 'cd2配置备份',
                   'before_queue_clean_' + time.strftime('%H%M%S'))
 
 # 要删掉的堵塞任务（云端已有 → 重复上传 → 永远 PermissionDenied）

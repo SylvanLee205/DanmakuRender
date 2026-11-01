@@ -1,69 +1,48 @@
 @echo off
-setlocal
-chcp 65001 <nul >nul
-title Install DMR boot task
 rem ASCII ONLY.
-rem Self-elevate: without admin the task cannot be created.
+rem Create the "start DMR at boot" scheduled task.
+rem
+rem 2026-11-02: this used to build the task with a long schtasks command line
+rem inside the .bat. It now delegates to tools\install_boot_task.py, which
+rem generates everything at run time (no hard-coded paths, no UTF-16 XML
+rem template) and reads the account password from the registry when
+rem autologon is configured.
+rem
+rem Requires administrator - the python script asks for UAC itself, but we
+rem also check here so the message is obvious.
+chcp 65001 <nul >nul
+cd /d "%~dp0"
+title Install DMR boot task
+
 net session >nul 2>&1
 if errorlevel 1 (
-  echo Requesting administrator rights ... please click "Yes" on the UAC prompt.
-  powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+  echo Requesting administrator rights ... click "Yes" on the UAC prompt.
+  rem %SystemRoot% is expanded here on purpose: this line runs before _env.bat.
+  "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
   exit /b
 )
 
-set "TASK=DMR_Boot"
-set "ACTION=%~dp0Run_DMR.bat"
-if not exist "%ACTION%" (
-  echo [X] missing %ACTION%
+call "%~dp0_env.bat"
+if errorlevel 1 (
+  echo [X] No Python 3 found. Run Setup.bat first.
   pause
   exit /b 1
 )
 
 echo ============================================================
-echo  Create scheduled task: %TASK%
+echo  Create scheduled task: DMR_Boot
 echo ============================================================
 echo  trigger : at system startup (runs BEFORE anyone logs on)
-echo  account : Administrator - password asked now; Windows stores it
-echo            as an LSA secret (same mechanism Autologon used)
-echo  action  : %ACTION%
+echo  action  : %~dp0Run_DMR.bat
+echo  account : the same one Windows uses for auto-logon; the password
+echo            is read from the registry and stored by Windows as an
+echo            LSA secret (never written into the task in clear text)
 echo.
 echo  NOTE: the task runs in session 0, so it has NO console window.
-echo        Everything it does is logged to:
-echo          %~dp0logs\autostart.log
-echo        and DMR's own log: logs\DMR-YYYYMMDD*.log
+echo        Everything it does is logged to %~dp0logs\autostart.log
 echo.
-schtasks /create /tn "%TASK%" /tr "%ACTION%" /sc onstart /ru "Administrator" /rp * /rl highest /f
-if errorlevel 1 (
-  echo.
-  echo [X] Create failed - nothing was changed.
-  pause
-  exit /b 1
-)
-
-echo.
-echo Applying settings: no execution time limit, start if missed ...
-powershell -NoProfile -Command "$n='%TASK%'; $s=Get-ScheduledTask -TaskName $n -ErrorAction Stop; $s.Settings.ExecutionTimeLimit='PT0S'; $s.Settings.StartWhenAvailable=$true; $s.Settings.DisallowStartIfOnBatteries=$false; $s.Settings.StopIfGoingOnBatteries=$false; $s.Settings.MultipleInstances='IgnoreNew'; Set-ScheduledTask -TaskName $n -Settings $s.Settings | Out-Null"
-
-echo.
-echo Testing the task once now (safe: DMR may already be running, the guard
-echo refuses to start a second instance) ...
-schtasks /run /tn "%TASK%" >nul 2>&1
-"%SystemRoot%\System32\ping.exe" -n 8 127.0.0.1 >nul
-powershell -NoProfile -Command "$i=Get-ScheduledTaskInfo -TaskName '%TASK%'; '  LastRun : {0}' -f $i.LastRunTime; '  Result  : {0}   (0 = success, 267009 = still running)' -f $i.LastTaskResult"
-
-echo.
-echo ============================================================
-echo  [OK] Installed.
-echo ============================================================
-echo  It now starts DMR at every boot, WITHOUT anyone logging in.
-echo  The logon entry stays as a fallback (it skips if DMR already runs).
-echo.
-echo  How to check it is working later:
-echo    1) double-click DMR post-boot check on the desktop
-echo       -^> section 7 shows task state / last run / result
-echo    2) open logs\autostart.log  -^> boot-task lines
-echo    3) DMR's own log starts with: code version / 33 tasks / 0 ERROR
-echo.
-echo  Rollback: double-click Remove_Boot_Task.bat
+"%DMR_PY%" tools\install_boot_task.py %*
+set RC=%errorlevel%
 echo.
 pause
+exit /b %RC%

@@ -16,6 +16,21 @@ import shutil
 import subprocess
 import time
 
+
+def _tool(name):
+    """定位外部工具：环境变量 -> tools/ -> PATH -> 注册表 PATH -> 安装目录。
+
+    见 DMR/utils/toolsmgr.py。不写死版本号和安装位置 ——
+    换个 rclone 版本、换台电脑都不用改代码。
+    """
+    import os as _o
+    import sys as _s
+    _root = _o.path.dirname(_o.path.dirname(_o.path.abspath(__file__)))
+    if _root not in _s.path:
+        _s.path.insert(0, _root)
+    from DMR.utils.toolsmgr import find_tool
+    return find_tool(name) or name
+
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
 
 
@@ -106,7 +121,8 @@ print('3. 清理残留配置目录')
 print('=' * 78)
 if os.path.isdir(APP_CFG):
     # 先备份（万一要回滚）
-    bkdst = os.path.join(r'F:\_CD2配置备份_20261005',
+    bkdst = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                         'backups', 'cd2配置备份',
                          '应用版配置_final_' + time.strftime('%Y%m%d-%H%M%S'))
     try:
         shutil.copytree(APP_CFG, bkdst)
@@ -140,7 +156,7 @@ print(f'  服务版状态: {svc}')
 print(f'  服务版目录: {"✅ 存在" if os.path.exists(SVC_DIR) else "❌ 不见了！"}')
 print(f'  19798 监听: {ps("(Get-NetTCPConnection -LocalPort 19798 -State Listen -ErrorAction SilentlyContinue | Measure-Object).Count")} 个')
 print(f'  29798 监听: {ps("(Get-NetTCPConnection -LocalPort 29798 -State Listen -ErrorAction SilentlyContinue | Measure-Object).Count")} 个（应为 0）')
-r = subprocess.run([r'C:\User Program Files\rclone-v1.75.1\rclone.exe',
+r = subprocess.run([_tool('rclone'),
                     'lsf', 'cd2:百度网盘/DMR录播', '--max-depth', '1'],
                    capture_output=True, text=True, encoding='utf-8',
                    errors='replace', timeout=300)

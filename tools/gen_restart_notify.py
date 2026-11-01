@@ -109,7 +109,8 @@ def build(task_names=None, task_count=None):
     """
     _, recent = bump_and_get_restarts()
     ok, cd2_txt = cd2_ok()
-    free_gb = disk_free_gb('F:\\')
+    # 磁盘剩余：不传路径 = 自动取数据所在盘（原来是写死的 F:\）
+    free_gb = disk_free_gb()
     ver = version()
 
     head = 'DanmakuRepo 已成功复活' + (f'（v{ver}）' if ver else '')

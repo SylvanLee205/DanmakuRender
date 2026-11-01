@@ -16,4 +16,12 @@ rem logon autostart only, so the two never fight.
 rem Every decision is logged to logs\autostart.log (session 0 has no console).
 chcp 65001 <nul >nul
 cd /d "%~dp0"
-".\.venv\Scripts\python.exe" tools\autostart_launch.py --boot-fallback 180
+rem -- resolve the Python interpreter (venv / portable / py launcher / PATH) --
+call "%~dp0_env.bat"
+if errorlevel 1 (
+  echo [X] No Python 3 found on this machine.
+  echo     Run Setup.bat once ^(double-click it^) - it installs everything.
+  pause
+  exit /b 1
+)
+"%DMR_PY%" tools\autostart_launch.py --boot-fallback 180

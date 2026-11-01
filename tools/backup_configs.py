@@ -25,7 +25,8 @@
     python tools\\backup_configs.py list                # 列出快照
     python tools\\backup_configs.py restore <快照名>     # 恢复
 
-快照位置：F:\\_DMR配置快照\\<时间戳>\\
+快照位置：<项目根>\backups\配置快照\<时间戳>\
+          可用环境变量 DMR_SNAPSHOT_DIR 指到别的盘。
 """
 import argparse
 import hashlib
@@ -40,7 +41,13 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 
 
 ROOT = _PROJECT_ROOT
 CONFIGS = os.path.join(ROOT, 'configs')
-SNAP_ROOT = r'F:\_DMR配置快照'
+
+# 快照位置：默认 <项目>/backups/配置快照（跟着项目走，换机器一起搬）。
+# 可用环境变量 DMR_SNAPSHOT_DIR 指到别的盘。
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+from DMR.paths import snapshot_dir as _snapshot_dir
+SNAP_ROOT = _snapshot_dir()
 MANIFEST = 'manifest.json'
 
 # 这些是关键配置，缺失就报警

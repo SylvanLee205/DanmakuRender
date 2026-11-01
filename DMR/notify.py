@@ -47,21 +47,32 @@ def send(title, lines, timeout=15):
     except Exception:
         return False
     try:
+        # 用绝对路径调 curl：session 0 / 精简 PATH 下裸 'curl.exe' 会找不到
+        from .paths import system32
         r = subprocess.run(
-            ['curl.exe', '-s', '-m', str(timeout),
+            [system32('curl.exe'), '-s', '-m', str(timeout),
              '--data-urlencode', f'title@{TITLE_FILE}',
              '--data-urlencode', f'desp@{CONTENT_FILE}',
              API_URL],
             capture_output=True, text=True, encoding='utf-8',
-            errors='replace', timeout=timeout + 10)
+            errors='replace', timeout=timeout + 10,
+            stdin=subprocess.DEVNULL)
         return '"code":0' in (r.stdout or '')
     except Exception:
         return False
 
 
-def disk_free_gb(path='F:\\'):
-    """磁盘剩余空间（GB）。返回 None 表示查不到。"""
+def disk_free_gb(path=None):
+    """磁盘剩余空间（GB）。返回 None 表示查不到。
+
+    ⚠️ 2026-11-02：原来默认写死 'F:\\'。项目换到别的盘（或录制盘独立）时
+    这个值会报错误的盘 —— 磁盘告警就会误判。现在默认取**数据所在盘**
+    （DMR_DATA_ROOT，缺省为项目根）。
+    """
     try:
+        if path is None:
+            from .paths import data_root
+            path = data_root()
         import shutil
         return shutil.disk_usage(path).free / 1024 / 1024 / 1024
     except Exception:

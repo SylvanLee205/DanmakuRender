@@ -47,14 +47,9 @@ sys.path.insert(0, ROOT)
 
 DEFAULT_MIN_AGE_MINUTES = 2
 
-# rclone 常见安装位置（Path 里没有时按这个找）
-_RCLONE_DIRS = [
-    r'C:\User Program Files',
-    r'C:\Program Files',
-    r'C:\Program Files (x86)',
-    os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Programs'),
-    os.environ.get('USERPROFILE', ''),
-]
+# rclone / ffmpeg 的定位统一交给 DMR.utils.toolsmgr：
+# 环境变量 -> tools/ -> PATH -> 注册表 PATH -> 常见安装目录。
+# （2026-11-02：原来这里写死了 C:\User Program Files 等几个目录）
 
 
 def _ensure_tool_in_path(names=('rclone', 'ffmpeg', 'ffprobe')):
@@ -64,16 +59,18 @@ def _ensure_tool_in_path(names=('rclone', 'ffmpeg', 'ffprobe')):
     （或从计划任务/别的 shell 跑）时 PATH 里可能没有 rclone，
     会报 `无法启动 rclone: [WinError 2]`（2026-10-05 实测）。
     """
-    import glob as _glob
+    from DMR.utils.toolsmgr import find_tool
     added = []
-    for d in _RCLONE_DIRS:
-        if not d or not os.path.isdir(d):
+    cur = [x.lower() for x in os.environ.get('PATH', '').split(os.pathsep) if x]
+    for n in names:
+        p = find_tool(n)
+        if not p or not os.path.isfile(p):
             continue
-        for sub in _glob.glob(os.path.join(d, 'rclone*', 'rclone.exe')):
-            sd = os.path.dirname(sub)
-            if sd not in os.environ.get('PATH', ''):
-                os.environ['PATH'] = sd + os.pathsep + os.environ.get('PATH', '')
-                added.append(sd)
+        sd = os.path.dirname(p)
+        if sd.lower() not in cur:
+            os.environ['PATH'] = sd + os.pathsep + os.environ.get('PATH', '')
+            cur.append(sd.lower())
+            added.append(sd)
     return added
 
 

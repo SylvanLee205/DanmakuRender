@@ -59,6 +59,15 @@ class LiveEvents(BaseEvents):
         self.state_repo = config.get('state_repo') if isinstance(config, dict) else None
         #: 已创建过占位场次的 group_id（渲染/上传可能先于录制登记发生）
         self._sessions_ensured: set = set()
+        #: 开播通知防抖时间戳：key -> 上次发送时间（time.time()）
+        #: ⚠️ 2026-11-02 修：这两个属性之前**从未在 __init__ 里定义**。
+        #:    后果是 ``_notify_live()`` 每次都在 ``self._notify_last.get(...)``
+        #:    抛 AttributeError，又被函数末尾的裸 ``except: pass`` 吞掉 ——
+        #:    开播通知从 2026-10-18 起一条都没发出去，日志里也没有任何痕迹。
+        #:    新增属性时请一并在这里初始化，并且在 hasattr 之外做兜底。
+        self._notify_last: dict = {}
+        #: 是否已经见过这场直播的"开始"（供将来恢复下播通知时用）
+        self._seen_end: bool = False
 
     @property
     def event_dict(self):
@@ -108,10 +117,14 @@ class LiveEvents(BaseEvents):
                 self._seen_end = True   # 开播过
 
             key = f'{kind}:{self.name}'
-            last = self._notify_last.get(key, 0)
+            # 兜底：即使某个子类没走 __init__（或被旧代码实例化），也不至于崩
+            _last_map = getattr(self, '_notify_last', None)
+            if _last_map is None:
+                _last_map = self._notify_last = {}
+            last = _last_map.get(key, 0)
             if now - last < 60:
                 return
-            self._notify_last[key] = now
+            _last_map[key] = now
 
             import threading as _th
 
@@ -120,17 +133,26 @@ class LiveEvents(BaseEvents):
                     from DMR.notify import send
                     ts = time.strftime('%Y-%m-%d %H:%M:%S')
                     # 只发开播通知（下播在函数开头就 return 了）
-                    send(f'🟢 开播：{self.name}',
-                         [f'主播：{self.name}',
-                          f'时间：{ts}',
-                          '',
-                          '开始录制...'])
-                except Exception:
-                    pass
+                    ok = send(f'🟢 开播：{self.name}',
+                              [f'主播：{self.name}',
+                               f'时间：{ts}',
+                               '',
+                               '开始录制...'])
+                    if not ok:
+                        # ⚠️ send() 失败时**不抛异常**（设计如此，通知不该拖垮录制），
+                        #    但必须留日志，否则"没收到通知"永远查不到原因。
+                        self.logger.warning('%s: 开播通知发送失败（Server酱未返回 code:0）',
+                                            self.name)
+                except Exception as _e:
+                    self.logger.warning('%s: 开播通知异常: %r', self.name, _e)
 
             _th.Thread(target=_do, daemon=True).start()
-        except Exception:
-            pass
+        except Exception as _e:
+            # ⚠️ 2026-11-02：这里原来是裸 `except: pass`。
+            #    正因为如此，_notify_last 未初始化导致的 AttributeError 被
+            #    静默吞掉两周，通知一次都没发出、日志里却毫无痕迹。
+            #    通知失败不该影响录制，但**必须留痕**，否则无从排查。
+            self.logger.warning('%s: 开播通知触发失败: %r', self.name, _e)
 
     def defaultEvent(self, message:PipeMessage):
         self.logger.log(PROGRESS, f'{self.name}: {message.msg}')

@@ -10,6 +10,21 @@ import shutil
 import sqlite3
 import subprocess
 
+
+def _tool(name):
+    """定位外部工具：环境变量 -> tools/ -> PATH -> 注册表 PATH -> 安装目录。
+
+    见 DMR/utils/toolsmgr.py。不写死版本号和安装位置 ——
+    换个 rclone 版本、换台电脑都不用改代码。
+    """
+    import os as _o
+    import sys as _s
+    _root = _o.path.dirname(_o.path.dirname(_o.path.abspath(__file__)))
+    if _root not in _s.path:
+        _s.path.insert(0, _root)
+    from DMR.utils.toolsmgr import find_tool
+    return find_tool(name) or name
+
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
 
 
@@ -17,7 +32,7 @@ UP = _PROJECT_ROOT
 REPLAY = os.path.join(UP, '直播回放')
 SVC = r'C:\Windows\System32\config\systemprofile\Waytech\CloudDrive2'
 TMP = os.environ['TEMP']
-RCLONE = r'C:\User Program Files\rclone-v1.75.1\rclone.exe'
+RCLONE = _tool('rclone')
 
 TARGETS = [
     ('苏苏没烦恼', '苏苏没烦恼-2026年10月04日00点24分'),

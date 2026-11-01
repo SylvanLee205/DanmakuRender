@@ -31,7 +31,8 @@ import time
 
 NEW = os.path.join(os.environ['LOCALAPPDATA'], 'CloudDrive.WinUI')
 APP = r'C:\Program Files\CloudDrive\CloudDrive.exe'
-BKROOT = r'F:\_CD2配置备份_20261005'
+BKROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                      'backups', 'cd2配置备份')
 
 
 def ps(cmd):

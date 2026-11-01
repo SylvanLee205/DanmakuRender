@@ -107,8 +107,27 @@ class SubprocessUploader:
             self.logger.debug(f'文件名清洗跳过（不影响上传）: {e}')
             return cmds
 
+    @staticmethod
+    def _resolve_exe(prog):
+        """把命令名解析成绝对路径（rclone 可能不在 PATH 里）。
+
+        ⚠️ 2026-11-02：本机的 rclone 装在
+            C:\\User Program Files\\rclone-v1.75.1\\rclone.exe
+        这种非标准目录，进程 PATH 里没有。直接 Popen(['rclone']) 会
+        FileNotFoundError，而用户看到的是"上传失败"。
+        现在统一走 ToolsList 的定位（环境变量 / tools\\ / PATH / 注册表）。
+        """
+        base = os.path.basename(str(prog)).lower()
+        if base.startswith('rclone'):
+            from DMR.utils.toolsmgr import ToolsList
+            return ToolsList.get('rclone') or prog
+        return prog
+
     def call_subprocess(self, file, command, timeout=None, **kwargs):
         cmds = [replace_keywords(str(x), file) for x in command]
+
+        # 命令名 → 绝对路径
+        cmds[0] = self._resolve_exe(cmds[0])
 
         # ── 兜底：把远程文件名里的 emoji 去掉 ──────────────────────────
         # 背景（2026-10-05 实测）：百度网盘开放平台 API 拒绝含 emoji 的路径，

@@ -20,8 +20,10 @@
 也不要推上去半截内容。
 
 两个 worktree（由 `git worktree` 维护，不在生产目录里切分支）：
-    F:\\DanmakuRepo-prodsync   公开分支
-    F:\\DanmakuRepo-full       私有完整副本
+    <项目根>-prodsync   公开分支
+    <项目根>-full       私有完整副本
+例如项目在 F:\\DanmakuRepo 时，两个工作树就在 F:\\DanmakuRepo-prodsync
+和 F:\\DanmakuRepo-full。换成别的盘/目录会自动跟着变。
 """
 import argparse
 import os

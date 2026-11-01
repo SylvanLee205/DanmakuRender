@@ -12,7 +12,15 @@ chcp 65001 <nul >nul
 cd /d "%~dp0"
 title Push both repos
 
-".\.venv\Scripts\python.exe" tools\push_all.py --apply
+rem -- resolve the Python interpreter (venv / portable / py launcher / PATH) --
+call "%~dp0_env.bat"
+if errorlevel 1 (
+  echo [X] No Python 3 found on this machine.
+  echo     Run Setup.bat once ^(double-click it^) - it installs everything.
+  pause
+  exit /b 1
+)
+"%DMR_PY%" tools\push_all.py --apply
 if errorlevel 1 goto failed
 
 echo.

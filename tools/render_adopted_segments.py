@@ -24,6 +24,21 @@ from DMR.Render.dmrender import DmRender
 from DMR.utils import VideoInfo, StreamerInfo
 
 
+def _tool(name):
+    """定位外部工具：环境变量 -> tools/ -> PATH -> 注册表 PATH -> 安装目录。
+
+    见 DMR/utils/toolsmgr.py。不写死版本号和安装位置 ——
+    换个 rclone 版本、换台电脑都不用改代码。
+    """
+    import os as _o
+    import sys as _s
+    _root = _o.path.dirname(_o.path.dirname(_o.path.abspath(__file__)))
+    if _root not in _s.path:
+        _s.path.insert(0, _root)
+    from DMR.utils.toolsmgr import find_tool
+    return find_tool(name) or name
+
+
 TASK = '哭哭不嘻嘻'
 STREAMER = '哭哭不嘻嘻'
 VDIR = os.path.join('直播回放', TASK)
@@ -34,7 +49,7 @@ STEMS = [
     '哭哭不嘻嘻-2026年10月19日03点39分',
 ]
 
-RCLONE = r'C:\User Program Files\rclone-v1.75.1\rclone.exe'
+RCLONE = _tool('rclone')
 REMOTE = 'cd2:百度网盘/DMR录播/' + TASK
 
 
