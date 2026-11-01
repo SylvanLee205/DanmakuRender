@@ -122,7 +122,7 @@ while not self.stoped:
    它会自动找一个在播的主播，依次用 streamgears / ffmpeg 跑 60 秒，
    对比产出文件的大小、时长、帧数、解码状态。也可以手动指定：
    ```powershell
-   python tools\ab_test_engines.py --url https://live.douyin.com/123456789 --seconds 60
+   python tools\ab_test_engines.py --url https://live.douyin.com/56909717876 --seconds 60
    ```
 
 ---
