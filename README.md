@@ -1,54 +1,113 @@
-# DanmakuRender-5 —— 一个录制带弹幕直播的小工具（版本5）
+# DanmakuRender-AutoUp
 
-> **本仓库的分支**
->
-> | 分支 | 内容 |
-> |---|---|
-> | `prod-sync`（默认） | **生产环境代码**。基于 v5，叠加了长期实盘跑出来的修复与运维工具 |
-> | `v5` | 上游发布版基线，已脱敏（无内网地址、示例配置） |
->
-> 另有一个**私有**仓库 `DanmakuRender-Full` 保存完整副本（含 `configs/`、状态库），
-> 用于灾难恢复；那里有主播链接等敏感信息，**请勿公开**。
->
-> 本文档其余部分描述的是上游 v5 的通用能力。生产环境的改动与踩坑记录见下面
-> 「文档索引 → 故障排查记录」。
+**无人值守的直播录播服务器。** 多路并发录制 → 弹幕渲染 → 网盘上传 → 自动清理，
+7×24 跑着，不需要人盯。
 
-结合网络上的代码写的一个能录制带弹幕直播流的小工具，主要用来录制包含弹幕的视频流。     
-- 可以录制纯净直播流和弹幕，并且支持在本地预览带弹幕直播流。
-- 可以自动渲染弹幕到视频中，并且渲染速度快。
-- 支持同时录制多个直播。    
-- 支持录播自动上传至B站。     
+基于 [SmallPeaches/DanmakuRender](https://github.com/SmallPeaches/DanmakuRender) **v5**
+深度定制的**生产演进版**。原版解决的是"怎么录"，这个版本解决的是
+**"怎么无人值守地录上一年不出事"**。
 
-此版本为全新设计的版本5，包含以下新功能：     
-- 支持动态载入配置文件。
-- 支持更加复杂的录制、上传、渲染和清理逻辑。
-- 支持搬运直播回放或者视频。
-- 支持使用webhook与其他录制软件协同。
+- 目前实盘：**33 个主播**同时监控，抖音为主，已连续运行数月
+- 一场直播从开播到下播全程自动：录制 → 渲染弹幕版 → 上传网盘 → 24 小时后删源视频
+- 崩溃能自愈：开机自启、会话迁移、优雅停止、启动对账补派
+- 有 **503 个模块级测试**兜底
 
-旧版本可以在分支v1-v4找到。     
+---
 
+## 一、它和原版最大的不同
 
-## 使用说明
-**如果你是纯萌新建议看我B站的专栏安装：https://www.bilibili.com/read/cv26348023**         
+原版的架构（引擎/消息/插件/配置合并/下载器抽象）**完整保留**，
+改掉的全是外围。完整清单见
+[`docs/与上游的差异.md`](docs/与上游的差异.md)。
 
-### 安装与使用文档      
-[**安装文档**](docs/installation.md)       
-[**使用文档**](docs/usage.md)     
+| 方面 | 原版 | 这里 |
+|---|---|---|
+| **上传** | B站（biliup） | **rclone → 百度网盘**，可跳过横屏高码率 |
+| **清理** | 基本没有 | 延迟清理（默认 24h）+ 后悔期 + 状态库记录 |
+| **状态** | 重启即丢 | **SQLite 状态库**，重启后自动补渲染/补上传/补清理 |
+| **运维** | 手动启动 | 开机自启三层、优雅停止、启动对账、孤儿分段自动接管 |
+| **可观测性** | 日志 | 心跳、自检脚本、`tools/dmr-status.ps1` 面板 |
+| **测试** | 无 | 503 个 unittest，含状态库/清理/自启/字形清洗 |
+| **文档** | 安装+使用 | 另有排查记录、维护记录、与上游差异、项目状态 |
 
-[**服务器录播示例**](https://github.com/SmallPeaches/DanmakuRender/discussions/368)
+**为什么不再跟上游合并**：上游最后一次提交是 2026-10-10（状态持久化），
+我们 10-15 就合并过了，之后至今无更新；且上游无 LICENSE 文件，
+没有 Copyleft 义务。详见
+[`docs/与上游的差异.md`](docs/与上游的差异.md#为什么不再跟上游合并)。
 
-### 可选参数
-程序运行时可以指定以下参数
-- `--config` 指定全局配置文件，默认`configs/global.yml`
-- `--version` 查看版本号
-- `--skip_update` 跳过版本检查
+---
 
-## 文档索引
+## 二、快速开始
+
+```bash
+# 1. 装依赖（注意：比原版多了 rclone/psutil/fonttools）
+python -m venv .venv && .venv\Scripts\pip install -r requirements.txt
+
+# 2. 装 ffmpeg（放进 tools/ 或加入 PATH）
+
+# 3. 启动
+Start_DMR.bat          # Windows 一键启动（守护循环，崩了 10 秒自重拉）
+```
+
+日常**只需要两个操作**：
+
+```bash
+# 加主播：复制抖音直播间链接，然后
+DMR-添加主播.bat        # 读剪贴板 → 自动取名 → 写 configs/ → 热加载，不用重启
+
+# 看状态
+DMR-看实时日志.bat      # 滚动日志 + 定期状态行
+```
+
+停用某个主播：把 `configs/DMR-xxx.yml` 挪进 `configs/temp/`，
+再跑 `tools/purge_task_state.py --apply`（只挪配置会让 DMR 拒绝启动，
+这是设计好的保护，详见 [`docs/project_state.md`](docs/project_state.md)）。
+
+---
+
+## 三、运维工具（原版没有，这是最值钱的部分）
+
+全部在 `tools/`，**默认都是预览模式，加 `--apply` 才真动手**：
+
+| 工具 | 干什么 |
+|---|---|
+| `add_room.py` | 读剪贴板链接，自动取名写配置，热加载 |
+| `stop_dmr.py` | **优雅停止**：ffmpeg 收到 `q` 写完当前段并改名，超时才硬杀 |
+| `autostart_launch.py` | 登录自启 + 跨会话迁移（窗口跟着人走） |
+| `rename_orphans.py` | 把 `[正在录制]` 孤儿分段登记进状态库，让启动对账自动接管 |
+| `clean_skipped_backlog.py` | 清"命中跳过上传规则却永不清理"的积压源视频 |
+| `purge_task_state.py` | 清停用任务的状态库记录（先备份 .db） |
+| `sync_full_backup.py` | 同步完整副本（含 configs/）到私有仓库 |
+| `dmr-status.ps1` | 状态面板：进程、会话位置、窗口可见性、自动登录有效性 |
+| `post_boot_check.py` | 重启后自检：自动登录四要素、DMR 起在哪个会话 |
+
+---
+
+## 四、目录结构
+
+```
+DMR/                     核心代码（架构沿用原版）
+  ├── state/             SQLite 状态库 + 启动对账（新增）
+  ├── Task/liveevents.py 录制事件处理、上传/清理判定（改动最大）
+  ├── Cleaner/           延迟清理（新增）
+  ├── Downloader/        下载器；Danmaku/glyphs.py 是字形安全清洗（新增）
+  └── Config/            配置合并（原版）
+tools/                   运维工具（见上，几乎全是新增）
+unit_tests/              503 个模块级测试（新增）
+configs/                 任务配置（DMR-*.yml）+ temp/ 停用归档区
+docs/                    文档（见下）
+直播回放/                 按主播分目录，弹幕版在「（弹幕版）」子目录
+```
+
+---
+
+## 五、文档索引
 
 ### 面向使用者
 - [安装文档](docs/installation.md) —— 环境准备与安装步骤
 - [使用文档](docs/usage.md) —— 配置项与各项功能的使用说明
 - [更新说明](docs/CHANGELOG.md) —— 每个版本改了什么、升级注意事项
+- [与上游的差异](docs/与上游的差异.md) —— **我们改了什么、为什么、为什么不再合并**
 
 ### 面向开发者
 - [项目当前状态](docs/project_state.md) —— 核实过的架构事实、产物语义、关键决策
@@ -80,8 +139,27 @@ python -B -m unittest discover -s unit_tests -t .
 python dryrun.py
 ```
 
-## 更多
-感谢 THMonster/danmaku, wbt5/real-url, ForgQi/biliup, ForgQi/stream-gears 的工作。     
-出现问题欢迎大家提issue讨论。       
+---
+
+## 六、分支与仓库
+
+| 分支 / 仓库 | 内容 |
+|---|---|
+| `prod-sync`（默认） | **生产环境代码** |
+| `v5` | 上游发布版基线，已脱敏（无内网地址、示例配置） |
+| 私有仓库 `DanmakuRender-Full` | 完整副本（含 `configs/`、状态库），灾难恢复用。含主播链接等敏感信息，**请勿公开** |
+
+本地 `master` 保留完整提交历史；`prod-sync` 是脱敏后的同步分支。
+
+---
+
+## 七、致谢
+
+原版与依赖：
+
+- [SmallPeaches/DanmakuRender](https://github.com/SmallPeaches/DanmakuRender) ——
+  本项目的 base，引擎/消息/插件架构全部来自它
+- THMonster/danmaku、wbt5/real-url、ForgQi/biliup、ForgQi/stream-gears
+- ffmpeg / libass / rclone / fontTools / psutil
 
 **本程序仅供研究学习使用！**
