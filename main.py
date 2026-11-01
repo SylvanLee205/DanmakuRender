@@ -72,7 +72,7 @@ sys.path.append('./tools')
 
 VERSION = '2026.05.01'
 
-from DMR import DanmakuRender
+from DMR import DanmakuRepo
 from DMR.Config import Config
 
 
@@ -487,7 +487,7 @@ if __name__ == '__main__':
     if not args.version:
         from DMR.utils.instance_lock import acquire as _acquire_instance_lock
         if _acquire_instance_lock() == 'busy':
-            _busy_msg = ('已有 DanmakuRender 实例在运行，本次启动退出。\n'
+            _busy_msg = ('已有 DanmakuRepo 实例在运行，本次启动退出。\n'
                          '两个实例会用同一份状态库和录制目录，互相覆盖产物状态。\n'
                          '确实要再起一个（例如换了 --config），先停掉正在跑的那个。')
             print(_busy_msg)
@@ -520,7 +520,7 @@ if __name__ == '__main__':
     }.get(_lvl_name, logging.INFO)
 
     if args.version:
-        print(f'DanmakuRender-5 {VERSION}.')
+        print(f'DanmakuRepo {VERSION}.')
         print('https://github.com/SmallPeaches/DanmakuRender')
         exit(0)
     
@@ -571,7 +571,7 @@ if __name__ == '__main__':
                     logging.CRITICAL: 'CRITICAL'}.get(_console_level, '?')
         print()
         print('=' * 68)
-        print(f'  DanmakuRender-5 {VERSION}   已启动')
+        print(f'  DanmakuRepo {VERSION}   已启动')
         print(f'  控制台输出级别: {_lvl_txt}')
         print(f'  完整日志(DEBUG): {log_file}')
         if _console_level >= PROGRESS:
@@ -597,7 +597,7 @@ if __name__ == '__main__':
     # 启动时检查自动化开关（防 auto_upload 等被静默翻转，导致流水线无声停摆）
     _verify_pipeline_switches(config, logger)
 
-    dmr = DanmakuRender(config, logger=logger, debug=args.debug)
+    dmr = DanmakuRepo(config, logger=logger, debug=args.debug)
     dmr.start()
 
     # 注意：这里**不**再打印"已加载 N 个主播"之类的汇总横幅。

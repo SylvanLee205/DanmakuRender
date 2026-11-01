@@ -70,7 +70,7 @@ def disk_free_gb(path='F:\\'):
 
 if __name__ == '__main__':
     # 手动测试
-    ok = send('DanmakuRender 通知测试',
+    ok = send('DanmakuRepo 通知测试',
               ['第一行', '第二行（应该有换行）', '', '第四行'])
     print(f'发送{"成功" if ok else "失败"}')
     print(f'标题文件: {TITLE_FILE}')

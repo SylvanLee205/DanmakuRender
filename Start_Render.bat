@@ -1,6 +1,6 @@
 @echo off
 rem ============================================================
-rem  DanmakuRender launcher / crash-restart guard
+rem  DanmakuRepo launcher / crash-restart guard
 rem  ASCII ONLY - DO NOT add non-ASCII characters!
 rem
 rem  Why ASCII only:
@@ -18,11 +18,11 @@ rem ============================================================
 rem chcp 65001 keeps console output readable
 chcp 65001 <nul >nul
 
-title DanmakuRender_Guard
+title DMR_Guard
 
 :loop
 cls
-echo [%date% %time%] Starting DanmakuRender ...
+echo [%date% %time%] Starting DanmakuRepo ...
 
 rem switch to project drive and dir
 F:

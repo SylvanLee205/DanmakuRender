@@ -2,7 +2,7 @@
 
 用户反馈：
 1. 收到 "test" 消息 —— 那是我测 curl 时发的，配置里还是旧文案
-   要改成："DanmakuRender已成功复活。"
+   要改成："DanmakuRepo已成功复活。"
 2. 清理完成消息也要带"（含弹幕文件）"
 3. DMR 没有守护进程 —— 我绕过 Start_Render.bat 直接跑 main.py 了，
    所以崩溃后不会自动重启
@@ -35,11 +35,11 @@ for l in src.splitlines():
 
 # 新文案：只说复活，后面的驱动细节去掉
 old_content = 'set "CONTENT=渲染服务器已成功复活。Intel A380 驱动正常，AV1 录制环境准备就绪。"'
-new_content = 'set "CONTENT=DanmakuRender已成功复活。"'
+new_content = 'set "CONTENT=DanmakuRepo已成功复活。"'
 if old_content in src:
     src = src.replace(old_content, new_content)
     print(f'\n  ✅ CONTENT 已改')
-elif 'DanmakuRender已成功复活' in src:
+elif 'DanmakuRepo已成功复活' in src:
     print(f'\n  已经是新文案了')
 else:
     # 兜底：正则替换
@@ -52,10 +52,10 @@ else:
 
 # TITLE 也顺便改成更清晰的（保留原有含义，用户没要求改但可以更明确）
 old_title = 'set "TITLE=DMR服务器状态报告"'
-new_title = 'set "TITLE=DanmakuRender 状态"'
+new_title = 'set "TITLE=DanmakuRepo 状态"'
 if old_title in src:
     src = src.replace(old_title, new_title)
-    print('  ✅ TITLE 改为 "DanmakuRender 状态"')
+    print('  ✅ TITLE 改为 "DanmakuRepo 状态"')
 
 shutil.copy2(BAT, BAT + '.bak-content-' + time.strftime('%H%M%S'))
 open(BAT, 'w', encoding='utf-8', newline='').write(src)

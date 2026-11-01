@@ -19,13 +19,13 @@ from DMR.utils import *
 #:
 #: 为什么不走配置：``Downloader``/``StreamDownloadTask`` 的配置来自
 #: ``download_args``，属于**用户可写的任务配置**；把运行时对象塞进去会污染配置命名
-#: 空间、也会让它被意外序列化。这里用模块级引用，由 ``DanmakuRender.start()``
+#: 空间、也会让它被意外序列化。这里用模块级引用，由 ``DanmakuRepo.start()``
 #: 在启动时设置一次。下载器仍可通过 ``state_repo`` 参数显式覆盖（便于单测）。
 _STATE_REPO = None
 
 
 def set_state_repo(repo) -> None:
-    """设置下载器使用的状态库（由 ``DanmakuRender`` 启动时调用）。"""
+    """设置下载器使用的状态库（由 ``DanmakuRepo`` 启动时调用）。"""
     global _STATE_REPO
     _STATE_REPO = repo
 

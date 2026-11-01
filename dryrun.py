@@ -15,7 +15,7 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append('./tools')
 
 from DMR.utils import *
-from DMR import DanmakuRender
+from DMR import DanmakuRepo
 from DMR.Config import Config
 
 #: 测试期间使用的分段时间（秒）。必须小于下方的运行时长（180 秒），
@@ -68,7 +68,7 @@ if __name__ == '__main__':
     logger.addHandler(console_handler)
     logger.addHandler(file_handler)
 
-    dmr = DanmakuRender(config, debug=args.debug)
+    dmr = DanmakuRepo(config, debug=args.debug)
 
     logger.info('正在启动测试...')
     dmr.start()

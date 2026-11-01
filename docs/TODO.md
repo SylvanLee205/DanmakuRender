@@ -318,6 +318,8 @@ session 0 的守护循环会兜底起一个（无窗口）实例，届时 Start_
   **下次登录/重启后窗口应该自动出现**（待验证）；
 - DanmakuRender_SessionWatch / DanmakuRender_Desktop 任务只负责"把 DMR
   挪到你会话"，它们拉起的实例无窗口（录像不受影响）。
+  > 2026-11-02 起这两个任务已改名为 `DMR_SessionWatch` / `DMR_Desktop`
+  > （本文以下历史记录保留当时的旧名，不再回改）。
 
 ### 新东西
 - `tools/autostart_launch.py` 重写：登录模式（带会话迁移 + 互斥锁 + 重试）、

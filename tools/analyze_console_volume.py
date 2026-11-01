@@ -25,7 +25,7 @@ txt = open(lg, encoding='utf-8', errors='replace').read()
 lines = [l for l in txt.split('\n') if l.strip()]
 print(f'  文件: {os.path.basename(lg)}  共 {len(lines)} 行')
 
-# 找最后一次 "DanmakuRender" 启动标志，或最后一个 engine info 密集段
+# 找最后一次 "DanmakuRepo" 启动标志，或最后一个 engine info 密集段
 start_idx = 0
 for i, l in enumerate(lines):
     if 'Plugin' in l and 'started' in l:

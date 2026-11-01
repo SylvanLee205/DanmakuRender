@@ -129,6 +129,39 @@ python -B -m unittest discover -s unit_tests -t .
 
 ---
 
+## 项目更名为 DanmakuRepo（2026-11-02）
+
+项目名从 `DanmakuRender-AutoUp` 改为 **DanmakuRepo**（Danmaku Media Repo，
+弹幕媒体归档库）。**缩写仍是 DMR**，因此绝大部分标识符刻意保持不变，
+升级不需要改任何配置。
+
+**改了**
+
+- README / 文档叙事、GitHub 仓库名
+- Python 类名 `DanmakuRender` → `DanmakuRepo`（17 处引用，纯机械替换）
+- 计划任务：`DanmakuRender_Boot` → `DMR_Boot`，`DanmakuRender_SessionWatch` →
+  `DMR_SessionWatch`，`DanmakuRender_Desktop` → `DMR_Desktop`，
+  `DanmakuRender_云端上传审计` → `DMR_云端上传审计`，
+  `DanmakuRender_配置快照` → `DMR_配置快照`
+- 登录启动项：`DanmakuRender_AutoUp.cmd` → `DMR_AutoUp.cmd`
+
+**刻意没改**（为了不动生产路径、也为了保留上游合并基准）
+
+| 保留项 | 原因 |
+|---|---|
+| 代码包名 `DMR/` 与全部 `from DMR...` import | 缩写巧合，改了要动 363 处 import 和 120 个文件 |
+| 配置键 `dmr_engine_args` | 三层配置合并的顶层键，改了偏离上游基准 |
+| 日志前缀 `DMR-*.log`、桌面脚本 `DMR-*.bat`、任务配置 `DMR-*.yml` | 同上，且都只是缩写 |
+| 项目目录 `F:\DanmakuRender_AutoUp` | 约 130 处硬编码路径引用它，改名需停生产 + 移目录 + 全量验证，收益仅为观感 |
+
+**升级注意**
+
+- 如果你**手工**创建过 `DanmakuRender_*` 计划任务，需要按上表改名，
+  否则 `Fix_Boot_Task.bat` 会新建一个 `DMR_Boot`，两个开机任务并存会双启动。
+- 已有安装的旧任务不会自动迁移，脚本也不会去找旧名字。
+
+---
+
 ## 弹幕字符导致整场渲染失败：三个真凶与字形安全清洗（2026-11-02）
 
 **解决的核心问题**：弹幕里出现某些字符时，整场渲染会失败，日志只有一条

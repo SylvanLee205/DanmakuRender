@@ -8,9 +8,9 @@ cd /d "%~dp0"
 title DMR Start
 ".\.venv\Scripts\python.exe" tools\autostart_guard.py
 if errorlevel 2 (
-    echo Starting DanmakuRender ...
+    echo Starting DanmakuRepo ...
     explorer.exe "%~dp0Start_Render.bat"
 ) else (
-    echo DanmakuRender is already running - nothing to do.
+    echo DanmakuRepo is already running - nothing to do.
 )
 "%SystemRoot%\System32\ping.exe" -n 6 127.0.0.1 >nul 2>nul

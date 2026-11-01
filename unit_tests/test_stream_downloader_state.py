@@ -583,7 +583,7 @@ class TestInProgressDetection(_TaskTestCase):
 
 
 class TestStateRepoInjection(DMRTestCase):
-    """模块级注入接口（供 ``DanmakuRender`` 使用）。"""
+    """模块级注入接口（供 ``DanmakuRepo`` 使用）。"""
 
     def test_set_state_repo_affects_new_tasks(self):
         from DMR.Downloader import stream_downloader as sd

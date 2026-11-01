@@ -3,7 +3,7 @@ rem ASCII ONLY. This is the ACTION of the boot scheduled task.
 rem
 rem --boot-fallback 180 behaviour (supervise mode, stays resident):
 rem   * someone is logged in  -> do nothing; the logon autostart (Startup
-rem     folder entry + DanmakuRender_SessionWatch task) starts DMR inside the
+rem     folder entry + DMR_SessionWatch task) starts DMR inside the
 rem     user session, so the console window is VISIBLE on the desktop
 rem     (the familiar behaviour).
 rem   * nobody logged in       -> after the 180s grace period, start DMR here

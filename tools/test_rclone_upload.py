@@ -20,7 +20,7 @@ def main():
     tmpdir = tempfile.mkdtemp(prefix='dmr_rclone_')
     local = os.path.join(tmpdir, '测试文件-带空格 和中文.txt')
     with open(local, 'w', encoding='utf-8') as f:
-        f.write('DanmakuRender 魔改版 rclone 上传自检\n' * 10)
+        f.write('DanmakuRepo rclone 上传自检\n' * 10)
 
     file = VideoInfo(path=local, taskname='自检', dtype='dm_video')
     cmd = ['rclone', 'copy', '{PATH}', REMOTE_DIR + '/{TASKNAME}', '--retries', '5']

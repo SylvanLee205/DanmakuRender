@@ -37,7 +37,7 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 sys.path.append(os.path.join(REPO_ROOT, "tools"))
 
-from DMR import DanmakuRender
+from DMR import DanmakuRepo
 from DMR.Config import Config
 from DMR.utils import PipeMessage
 
@@ -118,7 +118,7 @@ def _build_task(args) -> dict:
             "cover": "",
             "title": ("[全流程测试/{STREAMER.NAME}] {TITLE} "
                       "{CTIME.YEAR}年{CTIME.MONTH:02d}月{CTIME.DAY:02d}日"),
-            "desc": "DanmakuRender P1 全流程测试，可自行删除。",
+            "desc": "DanmakuRepo P1 全流程测试，可自行删除。",
             "dynamic": "{STREAMER.NAME} 的全流程测试",
             "tag": "直播回放",
             # 延迟发布：测试稿件不会立即公开
@@ -238,7 +238,7 @@ def main() -> int:
     config = Config(_build_global_config(args))
     print(f"已加载任务: {config.get_replaytasks()}")
 
-    dmr = DanmakuRender(config)
+    dmr = DanmakuRepo(config)
     dmr.start()
 
     try:

@@ -4,8 +4,8 @@
 ----------
 能拉起 DMR 的入口有三个：
 
-  · 开机计划任务 DanmakuRender_Boot（session 0）
-  · 登录自启 DanmakuRender_AutoUp.cmd（session 1）
+  · 开机计划任务 DMR_Boot（session 0）
+  · 登录自启 DMR_AutoUp.cmd（session 1）
   · 用户手动双击 Start_Render.bat / Start_DMR.bat
 
 三者各自都有进程检查（`tools/autostart_launch.py`、`tools/single_instance.py`），

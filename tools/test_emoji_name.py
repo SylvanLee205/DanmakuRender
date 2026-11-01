@@ -1,7 +1,8 @@
 """测试 emoji 文件名清洗。"""
+# NOTE 2026-11-02: used to point at another copy of the project (no longer maintained).
 import sys
 
-sys.path.insert(0, r'F:\DanmakuRender_Mod')
+sys.path.insert(0, r'F:\DanmakuRender_AutoUp')
 from DMR.Uploader.subprocess_uploader import safe_remote_name, has_bad_remote_chars
 
 CASES = [

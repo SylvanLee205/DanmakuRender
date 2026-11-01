@@ -35,7 +35,7 @@ if ($dmrSess.Count -gt 0) {
         Write-Host ("  [窗口]  DMR 就在本会话（S{0}），控制台窗口能看到" -f $mySess) -ForegroundColor Green
     } else {
         Write-Host ("  [窗口]  DMR 在会话 {0}，你在会话 {1} —— 窗口不在你眼前！" -f ($dmrSess -join ','), $mySess) -ForegroundColor Yellow
-        Write-Host '          修复：运行计划任务 DanmakuRender_Desktop，或停掉旧实例后双击 Start_DMR.bat' -ForegroundColor Yellow
+        Write-Host '          修复：运行计划任务 DMR_Desktop，或停掉旧实例后双击 Start_DMR.bat' -ForegroundColor Yellow
     }
 } else {
     Write-Host '  [窗口]  DMR 没在运行' -ForegroundColor Red

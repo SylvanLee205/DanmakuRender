@@ -11,7 +11,7 @@ if errorlevel 1 (
   exit /b
 )
 
-set "TASK=DanmakuRender_Boot"
+set "TASK=DMR_Boot"
 set "ACTION=F:\DanmakuRender_AutoUp\Run_DMR.bat"
 if not exist "%ACTION%" (
   echo [X] missing %ACTION%

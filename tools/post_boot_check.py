@@ -119,7 +119,7 @@ def main():
         if dmr_sess and str(mine) not in dmr_sess:
             print('  ⚠️ DMR 不在你当前会话 —— 控制台窗口看不到（录像不受影响）。')
             print('     修复：停掉旧实例后双击 Start_DMR.bat，或运行计划任务 '
-                  'DanmakuRender_Desktop。')
+                  'DMR_Desktop。')
             problems.append(f'DMR 在会话 {dmr_sess}，当前会话 {mine}，窗口不可见')
         elif dmr_sess:
             print('  ✅ DMR 就在当前会话，控制台窗口可见')
@@ -219,17 +219,17 @@ def main():
             print('     修复：运行 netplwizard 取消勾选"要使用本计算机必须输入用户名和密码"，')
             print('           或把密码写进注册表 DefaultPassword。')
             problems.append('AutoAdminLogon=1 但没有 DefaultPassword —— 自动登录失效')
-    state = ps("try { (Get-ScheduledTask -TaskName 'DanmakuRender_Boot' "
+    state = ps("try { (Get-ScheduledTask -TaskName 'DMR_Boot' "
                "-ErrorAction Stop).State } catch { 'NOT_FOUND' }")
     if 'NOT_FOUND' in state or not state:
-        print('  开机任务 DanmakuRender_Boot: ❌ 未安装')
+        print('  开机任务 DMR_Boot: ❌ 未安装')
         if str(auto) == '0':
             problems.append('自动登录已关且没有开机任务 —— 重启后 DMR 不会自己起来')
     else:
-        print(f'  开机任务 DanmakuRender_Boot: ✅ {state}')
+        print(f'  开机任务 DMR_Boot: ✅ {state}')
         # 任务跑在 session 0，没有窗口；这里把"上次运行/结果码/错过次数"摊开，
         # 不看日志也能知道它到底有没有干活。
-        info = ps("$i=Get-ScheduledTaskInfo -TaskName 'DanmakuRender_Boot'; "
+        info = ps("$i=Get-ScheduledTaskInfo -TaskName 'DMR_Boot'; "
                   "'{0}|{1}|{2}' -f $i.LastRunTime, $i.LastTaskResult, "
                   "$i.NumberOfMissedRuns")
         parts = (info or '').split('|')
@@ -250,7 +250,7 @@ def main():
             if code == '2':
                 problems.append('开机任务上次以退出码 2 结束 —— 看 logs/startup_error.log')
             # 默认 schtasks 建出来是 PT72H：3 天后任务被停掉，DMR 会被一起杀
-            limit = ps("(Get-ScheduledTask -TaskName 'DanmakuRender_Boot')."
+            limit = ps("(Get-ScheduledTask -TaskName 'DMR_Boot')."
                        "Settings.ExecutionTimeLimit")
             limit = (limit or '').strip()
             if limit and limit.upper() != 'PT0S':

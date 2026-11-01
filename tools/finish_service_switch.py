@@ -88,17 +88,17 @@ print()
 print('=' * 78)
 print('4. 删除 CD2 看门狗（服务版自带自愈，且它会去启动应用版）')
 print('=' * 78)
-out = ps("Get-ScheduledTask -TaskName 'DanmakuRender_CD2守护' -ErrorAction SilentlyContinue | "
+out = ps("Get-ScheduledTask -TaskName 'DMR_CD2守护' -ErrorAction SilentlyContinue | "
          "ForEach-Object { $_.TaskName }")
 if out.strip():
     # 先备份任务定义
-    xml = ps("Export-ScheduledTask -TaskName 'DanmakuRender_CD2守护' -ErrorAction SilentlyContinue")
+    xml = ps("Export-ScheduledTask -TaskName 'DMR_CD2守护' -ErrorAction SilentlyContinue")
     bkx = os.path.join(UP, '.temp', 'cd2_watchdog_task_backup.xml')
     os.makedirs(os.path.dirname(bkx), exist_ok=True)
     with open(bkx, 'w', encoding='utf-8') as f:
         f.write(xml)
     print(f'  任务定义已备份到 {bkx}')
-    ps("Unregister-ScheduledTask -TaskName 'DanmakuRender_CD2守护' -Confirm:$false")
+    ps("Unregister-ScheduledTask -TaskName 'DMR_CD2守护' -Confirm:$false")
     print('  ✅ 已删除')
 else:
     print('  任务不存在')

@@ -3,7 +3,7 @@
 
 为什么单独一个工具
 ----------------
-完整副本（私有仓库 DanmakuRender-Full 的 main）里除了代码，还有三样**运行时**
+完整副本（私有仓库 DanmakuRepo-Full 的 main）里除了代码，还有三样**运行时**
 东西：``configs/``、``.temp/`` 的几个 json、``logs/dmr_state.db``。
 代码变了要同步，配置加了主播、状态库推进了，也应该同步 —— 但手工
 "复制→git add→commit→push" 四步太容易漏，所以固化成这个工具。

@@ -17,7 +17,7 @@ from .state import (
 )
 
 
-class DanmakuRender():
+class DanmakuRepo():
     def __init__(self, config:Config, **kwargs) -> None:
         self.logger = logging.getLogger('DMR')
         self.config = config

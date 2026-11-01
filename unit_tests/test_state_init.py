@@ -1,4 +1,4 @@
-"""``DanmakuRender`` 与状态库/对账接线的集成测试（P1）。
+"""``DanmakuRepo`` 与状态库/对账接线的集成测试（P1）。
 
 覆盖：
 - 默认状态库路径为 ``logs/dmr_state.db``
@@ -60,9 +60,9 @@ class _WiringTestCase(DMRTestCase):
         return Config(global_file)
 
     def make_dmr(self, config):
-        from DMR import DanmakuRender
+        from DMR import DanmakuRepo
 
-        dmr = DanmakuRender(config)
+        dmr = DanmakuRepo(config)
         self.addCleanup(dmr.stop)
         return dmr
 
@@ -71,12 +71,12 @@ class TestStateWiring(_WiringTestCase):
 
     def test_default_db_path_is_logs(self):
         """未配置 state.db_path 时使用约定的 logs/dmr_state.db。"""
-        from DMR import DanmakuRender
+        from DMR import DanmakuRepo
 
         config = self.make_config()
         config.global_config.pop("state", None)
 
-        dmr = DanmakuRender.__new__(DanmakuRender)
+        dmr = DanmakuRepo.__new__(DanmakuRepo)
         dmr.config = config
 
         self.assertEqual(dmr._resolve_state_db_path(),
@@ -142,7 +142,7 @@ class TestTaskSetConsistency(_WiringTestCase):
         src_video 停在 recorded（48 小时后悔期内）→ 旧逻辑拒绝启动 →
         守护循环 10 秒重拉 → 崩溃循环。而"没录起来"比"留几行状态"严重得多。
         """
-        from DMR import DanmakuRender
+        from DMR import DanmakuRepo
 
         config = self.make_config(taskname="test")
         first = self.make_dmr(config)
@@ -152,7 +152,7 @@ class TestTaskSetConsistency(_WiringTestCase):
         first.stop()
 
         other = self.make_config(taskname="other", subdir="configs2")
-        second = DanmakuRender(other)          # 不应抛 StateConsistencyError
+        second = DanmakuRepo(other)          # 不应抛 StateConsistencyError
         try:
             self.assertIsNotNone(second.state_repo)
             # 历史行必须保留：配置挪回 configs/ 就能接着用
@@ -162,7 +162,7 @@ class TestTaskSetConsistency(_WiringTestCase):
 
     def test_strict_consistency_still_refuses_to_start(self):
         """state.strict_consistency: true 时恢复旧的拒绝启动行为。"""
-        from DMR import DanmakuRender, StateConsistencyError
+        from DMR import DanmakuRepo, StateConsistencyError
 
         config = self.make_config(taskname="test")
         first = self.make_dmr(config)
@@ -173,7 +173,7 @@ class TestTaskSetConsistency(_WiringTestCase):
         other = self.make_config(taskname="other", subdir="configs_strict",
                                  strict=True)
         with self.assertRaises(StateConsistencyError) as ctx:
-            DanmakuRender(other)
+            DanmakuRepo(other)
         message = str(ctx.exception)
         self.assertIn("test", message, "错误信息应指出缺失的任务名")
         self.assertIn("strict_consistency", message,
@@ -182,7 +182,7 @@ class TestTaskSetConsistency(_WiringTestCase):
 
     def test_refused_start_releases_state_db(self):
         """拒绝启动时不能留下打开的状态库连接（否则临时目录无法清理）。"""
-        from DMR import DanmakuRender, StateConsistencyError
+        from DMR import DanmakuRepo, StateConsistencyError
 
         config = self.make_config(taskname="test")
         first = self.make_dmr(config)
@@ -192,7 +192,7 @@ class TestTaskSetConsistency(_WiringTestCase):
 
         other = self.make_config(taskname="other", subdir="configs3", strict=True)
         with self.assertRaises(StateConsistencyError):
-            DanmakuRender(other)
+            DanmakuRepo(other)
 
         # 连接已释放：可以用独占方式重新打开文件
         import sqlite3
@@ -213,7 +213,7 @@ class TestTaskSetConsistency(_WiringTestCase):
         让程序拒绝启动，进入 12 秒一次的崩溃循环，只能手动删整个 dmr_state.db
         —— 会连带丢掉所有正常任务的历史。惩罚过重，改为自动清理。
         """
-        from DMR import DanmakuRender
+        from DMR import DanmakuRepo
 
         config = self.make_config(taskname="test")
         first = self.make_dmr(config)
@@ -222,7 +222,7 @@ class TestTaskSetConsistency(_WiringTestCase):
         first.stop()
 
         other = self.make_config(taskname="other", subdir="configs_purge")
-        second = DanmakuRender(other)             # 不应抛 StateConsistencyError
+        second = DanmakuRepo(other)             # 不应抛 StateConsistencyError
         try:
             self.assertIsNotNone(second.state_repo)
             # 孤儿任务的历史已被清掉
@@ -254,27 +254,27 @@ class TestStateRepoInjection(_WiringTestCase):
     def test_downloader_module_reference_is_set_on_start(self):
         """下载器用模块级引用接收状态库（避免污染用户配置命名空间）。"""
         from DMR.Downloader import stream_downloader as sd
-        from DMR import DanmakuRender
+        from DMR import DanmakuRepo
 
         original = sd._STATE_REPO
         self.addCleanup(lambda: setattr(sd, '_STATE_REPO', original))
 
         config = self.make_config()
-        dmr = DanmakuRender(config)
+        dmr = DanmakuRepo(config)
         dmr.start()
         self.addCleanup(dmr.stop)
 
         self.assertIs(sd._STATE_REPO, dmr.state_repo)
 
     def test_uploader_plugin_receives_state_repo(self):
-        from DMR import DanmakuRender
+        from DMR import DanmakuRepo
 
         config = self.make_config()
         # 启用上传器以便检查注入
         config.global_config['dmr_engine_args']['enabled_plugins'] = [
             'downloader', 'uploader']
 
-        dmr = DanmakuRender(config)
+        dmr = DanmakuRepo(config)
         dmr.start()
         self.addCleanup(dmr.stop)
 
@@ -282,10 +282,10 @@ class TestStateRepoInjection(_WiringTestCase):
         self.assertIs(uploader.state_repo, dmr.state_repo)
 
     def test_downloader_plugin_receives_state_repo(self):
-        from DMR import DanmakuRender
+        from DMR import DanmakuRepo
 
         config = self.make_config()
-        dmr = DanmakuRender(config)
+        dmr = DanmakuRepo(config)
         dmr.start()
         self.addCleanup(dmr.stop)
 
@@ -295,7 +295,7 @@ class TestStateRepoInjection(_WiringTestCase):
     def test_no_injection_when_state_db_unavailable(self):
         """状态库初始化失败时应照常启动（只是不持久化），不能因此崩溃。"""
         from DMR.Downloader import stream_downloader as sd
-        from DMR import DanmakuRender
+        from DMR import DanmakuRepo
 
         original = sd._STATE_REPO
         self.addCleanup(lambda: setattr(sd, '_STATE_REPO', original))
@@ -303,7 +303,7 @@ class TestStateRepoInjection(_WiringTestCase):
 
         config = self.make_config()
         config.global_config['state'] = {'db_path': ':memory:'}
-        dmr = DanmakuRender(config)
+        dmr = DanmakuRepo(config)
         dmr.start()
         self.addCleanup(dmr.stop)
 
@@ -382,10 +382,10 @@ class TestResumePendingArtifacts(_WiringTestCase):
 
     def _prepare(self):
         """构造 dmr（不启动插件线程），并把状态库初始化好以便塞数据。"""
-        from DMR import DanmakuRender
+        from DMR import DanmakuRepo
 
         config = self.make_config_with_upload()
-        dmr = DanmakuRender.__new__(DanmakuRender)
+        dmr = DanmakuRepo.__new__(DanmakuRepo)
         dmr.logger = __import__("logging").getLogger("DMR")
         dmr.config = config
         dmr.kwargs = {}
