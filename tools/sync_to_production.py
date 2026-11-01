@@ -16,8 +16,8 @@ import os
 import shutil
 import time
 
-SRC = r'F:\DanmakuRender_AutoUp'
-DST = r'F:\DanmakuRender_AutoUp'
+SRC = r'F:\DanmakuRepo'
+DST = r'F:\DanmakuRepo'
 
 # 要同步的文件（相对路径）—— 全是代码/文档，不含个人配置
 SYNC_FILES = [

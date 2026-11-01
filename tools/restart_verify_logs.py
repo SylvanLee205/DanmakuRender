@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import time
 
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 
 
 def ps(cmd):

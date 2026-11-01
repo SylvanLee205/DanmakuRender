@@ -10,7 +10,7 @@ import subprocess
 import sys
 import time
 
-os.chdir(r'F:\DanmakuRender_AutoUp')
+os.chdir(r'F:\DanmakuRepo')
 
 SRC = r'./直播回放/断尾人类\断尾的人类不会喵-2026年10月18日19点56分.mkv'
 DM_RAW = r'./直播回放/断尾人类\断尾的人类不会喵-2026年10月18日19点56分.ass'

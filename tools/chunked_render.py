@@ -12,7 +12,7 @@ import os
 import subprocess
 import sys
 
-os.chdir(r'F:\DanmakuRender_AutoUp')
+os.chdir(r'F:\DanmakuRepo')
 
 STEM = '哭哭不嘻嘻-2026年10月19日03点39分'
 SRC = f'直播回放/哭哭不嘻嘻/{STEM}.ts'

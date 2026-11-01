@@ -3,7 +3,7 @@
 import os
 import sys
 
-sys.path.insert(0, r'F:\DanmakuRender_AutoUp')
+sys.path.insert(0, r'F:\DanmakuRepo')
 from DMR.Uploader.subprocess_uploader import SubprocessUploader
 from DMR.utils import VideoInfo, StreamerInfo
 

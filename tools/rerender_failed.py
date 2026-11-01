@@ -4,13 +4,13 @@ import subprocess
 import sys
 import time
 
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 sys.path.insert(0, UP)
 os.chdir(UP)
 
 TARGETS = [
-    r'F:\DanmakuRender_AutoUp\直播回放\苏苏没烦恼\苏苏没烦恼-2026年10月04日00点24分.mkv',
-    r'F:\DanmakuRender_AutoUp\直播回放\哭哭不嘻嘻\哭哭不嘻嘻-2026年10月04日00点24分.mkv',
+    r'F:\DanmakuRepo\直播回放\苏苏没烦恼\苏苏没烦恼-2026年10月04日00点24分.mkv',
+    r'F:\DanmakuRepo\直播回放\哭哭不嘻嘻\哭哭不嘻嘻-2026年10月04日00点24分.mkv',
 ]
 
 import logging

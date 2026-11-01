@@ -45,7 +45,7 @@ import time
 SVC_ROOT = r'C:\Windows\System32\config\systemprofile\Waytech\CloudDrive2'
 CFG = os.path.join(SVC_ROOT, 'config.toml')
 SVC = 'CloudDrive2'
-MAIN = r'F:\DanmakuRender_AutoUp\main.py'
+MAIN = r'F:\DanmakuRepo\main.py'
 
 
 def ps(cmd):
@@ -168,7 +168,7 @@ logging.addLevelName(PROGRESS, 'PROGRESS')
     print('  已写回 main.py')
 
 # 语法检查
-r = subprocess.run([r'F:\DanmakuRender_AutoUp\.venv\Scripts\python.exe', '-m', 'py_compile', MAIN],
+r = subprocess.run([r'F:\DanmakuRepo\.venv\Scripts\python.exe', '-m', 'py_compile', MAIN],
                    capture_output=True, text=True, encoding='utf-8', errors='replace')
 print(f'  语法检查: {"✅ 通过" if r.returncode == 0 else "❌ 失败"}')
 if r.returncode != 0:
@@ -178,9 +178,9 @@ print()
 print('=' * 78)
 print('3. 验证级别解析')
 print('=' * 78)
-r = subprocess.run([r'F:\DanmakuRender_AutoUp\.venv\Scripts\python.exe', MAIN, '--help'],
+r = subprocess.run([r'F:\DanmakuRepo\.venv\Scripts\python.exe', MAIN, '--help'],
                    capture_output=True, text=True, encoding='utf-8', errors='replace',
-                   cwd=r'F:\DanmakuRender_AutoUp')
+                   cwd=r'F:\DanmakuRepo')
 for l in (r.stdout or '').split('\n'):
     if 'quiet' in l:
         print(f'  {l.strip()}')

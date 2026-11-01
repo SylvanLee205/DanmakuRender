@@ -18,7 +18,7 @@ SVC_NAME = 'CloudDrive2'
 SVC_PORT = 19798
 APP_EXE = r'C:\Program Files\CloudDrive\CloudDrive.exe'
 SVC_ROOT = r'C:\Windows\System32\config\systemprofile\Waytech\CloudDrive2'
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 
 
 def ps(cmd):

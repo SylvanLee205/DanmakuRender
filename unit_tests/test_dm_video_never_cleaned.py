@@ -45,7 +45,7 @@ class TestDmVideoPath(unittest.TestCase):
         self.assertTrue(is_dm_video_path(
             r'./直播回放/灰蒙蒙（弹幕版）\灰蒙蒙is-2026年10月19日14点56分（弹幕版）.mp4'))
         self.assertTrue(is_dm_video_path(
-            '/f/DanmakuRender_AutoUp/直播回放/vvu（弹幕版）/vvu-x.mp4'))
+            '/f/DanmakuRepo/直播回放/vvu（弹幕版）/vvu-x.mp4'))
 
     def test_ignores_source_files(self) -> None:
         self.assertFalse(is_dm_video_path(

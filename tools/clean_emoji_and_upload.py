@@ -18,7 +18,7 @@ import time
 RCLONE = r'C:\User Program Files\rclone-v1.75.1\rclone.exe'
 NEW = os.path.join(os.environ['LOCALAPPDATA'], 'CloudDrive.WinUI')
 APP = r'C:\Program Files\CloudDrive\CloudDrive.exe'
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 TMP = os.environ['TEMP']
 BK = os.path.join(r'F:\_CD2配置备份_20261005', 'before_emoji_clean_' + time.strftime('%H%M%S'))
 

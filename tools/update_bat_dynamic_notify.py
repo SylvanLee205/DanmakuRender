@@ -10,7 +10,7 @@ import os
 import shutil
 import time
 
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 BAT = os.path.join(UP, 'Start_Render.bat')
 
 BAT_ASCII = r'''@echo off
@@ -33,8 +33,8 @@ title DMR_Guard
 
 rem --- config ---
 set "API_URL=https://17530.push.ft07.com/send/sctp17530thl3urer2dsbnw3rnqyxzep.send"
-set "TITLE_FILE=F:\DanmakuRender_AutoUp\notify_title.txt"
-set "CONTENT_FILE=F:\DanmakuRender_AutoUp\notify_content.txt"
+set "TITLE_FILE=F:\DanmakuRepo\notify_title.txt"
+set "CONTENT_FILE=F:\DanmakuRepo\notify_content.txt"
 rem ---------------
 
 :loop
@@ -43,7 +43,7 @@ echo [%date% %time%] Starting DanmakuRepo ...
 
 rem switch to project drive and dir first, so python can find things
 F:
-cd "F:\DanmakuRender_AutoUp"
+cd "F:\DanmakuRepo"
 
 rem Generate notification text (time / CD2 status / live count / flap warning).
 rem   Failures here must NOT block startup, hence the redirect and no check.

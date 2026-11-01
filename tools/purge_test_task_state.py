@@ -7,7 +7,7 @@ import shutil
 import sqlite3
 import time
 
-DB = r'F:\DanmakuRender_AutoUp\logs\dmr_state.db'
+DB = r'F:\DanmakuRepo\logs\dmr_state.db'
 TASK = '_引擎测试'
 
 bak = DB + '.bak-purge-' + time.strftime('%Y%m%d-%H%M%S')

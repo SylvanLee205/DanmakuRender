@@ -12,7 +12,7 @@ import os
 import shutil
 import subprocess
 
-TMP = r'F:\DanmakuRender_AutoUp\.temp\_tsbsf_test'
+TMP = r'F:\DanmakuRepo\.temp\_tsbsf_test'
 shutil.rmtree(TMP, ignore_errors=True)
 os.makedirs(TMP, exist_ok=True)
 FF = 'ffmpeg'

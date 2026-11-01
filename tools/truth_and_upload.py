@@ -20,7 +20,7 @@ import time
 
 RCLONE = r'C:\User Program Files\rclone-v1.75.1\rclone.exe'
 SVC_ROOT = r'C:\Windows\System32\config\systemprofile\Waytech\CloudDrive2'
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 REPLAY = os.path.join(UP, '直播回放')
 TMP = os.environ['TEMP']
 

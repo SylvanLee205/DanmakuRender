@@ -12,8 +12,8 @@ import subprocess
 import sys
 import time
 
-sys.path.insert(0, r'F:\DanmakuRender_AutoUp')
-os.chdir(r'F:\DanmakuRender_AutoUp')
+sys.path.insert(0, r'F:\DanmakuRepo')
+os.chdir(r'F:\DanmakuRepo')
 import logging
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 
@@ -69,7 +69,7 @@ def main():
     ap.add_argument('--upload', action='store_true', help='渲染完顺带上传')
     args = ap.parse_args()
 
-    cfg = Config(os.path.join(r'F:\DanmakuRender_AutoUp', 'configs', 'global.yml'))
+    cfg = Config(os.path.join(r'F:\DanmakuRepo', 'configs', 'global.yml'))
     r = DmRender(**cfg.global_config['render_args']['dmrender'])
 
     print('=' * 78)

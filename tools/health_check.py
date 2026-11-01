@@ -5,7 +5,7 @@ import re
 import subprocess
 import time
 
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 REPLAY = os.path.join(UP, '直播回放')
 SVC = r'C:\Windows\System32\config\systemprofile\Waytech\CloudDrive2'
 

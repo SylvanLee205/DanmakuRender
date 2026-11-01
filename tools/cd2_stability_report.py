@@ -6,7 +6,7 @@ import re
 import subprocess
 import time
 
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 
 
 def ps(cmd):
@@ -107,4 +107,4 @@ print('  切换 BaiduPCS-Go 的触发条件（任一满足就切）：')
 print('    □ 看门狗拉起记录 ≥ 2 次（反复崩）')
 print('    □ 审计发现新的"本地有云端无"文件且原因是上传失败')
 print('    □ 需要严格限速（路由器设不了）')
-print('  迁移手册: F:\\DanmakuRender_AutoUp\\docs\\上传方案备选-BaiduPCS-Go迁移手册.md')
+print('  迁移手册: F:\\DanmakuRepo\\docs\\上传方案备选-BaiduPCS-Go迁移手册.md')

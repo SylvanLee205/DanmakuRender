@@ -20,7 +20,7 @@ import time
 
 APP = r'C:\Program Files\CloudDrive\CloudDrive.exe'
 PORT = 29798
-ROOT = r'F:\DanmakuRender_AutoUp'
+ROOT = r'F:\DanmakuRepo'
 LOGFILE = os.path.join(ROOT, 'logs', 'cd2_watchdog.log')
 STATE = os.path.join(ROOT, '.temp', 'cd2_watchdog_state.json')
 

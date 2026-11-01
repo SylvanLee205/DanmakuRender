@@ -9,7 +9,7 @@ import subprocess
 import sys
 import time
 
-PROD = r'F:\DanmakuRender_AutoUp'
+PROD = r'F:\DanmakuRepo'
 sys.path.insert(0, PROD)
 os.chdir(PROD)
 

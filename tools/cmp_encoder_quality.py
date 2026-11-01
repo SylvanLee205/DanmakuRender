@@ -7,8 +7,8 @@ import os
 import subprocess
 import time
 
-SRC = r'F:\DanmakuRender_AutoUp\直播回放\断尾人类\断尾的人类不会喵-2026年10月18日19点56分.mkv'
-OUTDIR = r'F:\DanmakuRender_AutoUp\.temp'
+SRC = r'F:\DanmakuRepo\直播回放\断尾人类\断尾的人类不会喵-2026年10月18日19点56分.mkv'
+OUTDIR = r'F:\DanmakuRepo\.temp'
 os.makedirs(OUTDIR, exist_ok=True)
 
 # 取一段 60 秒（避开开头，取 600s 处，画面有变化）

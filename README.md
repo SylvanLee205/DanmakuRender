@@ -45,9 +45,12 @@
 | 桌面/根目录脚本 | `DMR-*.bat`、`Start_DMR.bat` | |
 | 计划任务 | `DMR_Boot` / `DMR_SessionWatch` / `DMR_Desktop` | |
 
-**唯一不一致的是项目目录名：部署在 `F:\DanmakuRender_AutoUp`。**
-有意不改 —— 约 130 处硬编码路径引用它，改名要停生产、移目录、全量复验，
-收益只是"看起来一致"。**换机器部署时记得也放在这个路径，或全局替换那 130 处。**
+**项目目录也是 `F:\DanmakuRepo`**（2026-11-02 从 `F:\DanmakuRender_AutoUp` 改名，
+同时把代码里 205 处硬编码路径、5 个计划任务的动作路径、Startup 启动项一起改掉了）。
+
+⚠️ **换机器部署时请放回这个路径** —— 代码里仍有约 200 处绝对路径，改路径要动全部
+`tools/*.py` 的 `UP` 常量、`*.bat`、计划任务动作。想换个位置的话，全局搜索替换
+`F:\DanmakuRepo` 即可。
 
 ---
 
@@ -154,7 +157,7 @@ Start_DMR.bat          # 守护循环，进程退出后 10 秒自动重拉
 ```bash
 git clone <私有仓库>
 python -m venv .venv && .venv\Scripts\pip install -r requirements.txt
-# 装 ffmpeg / rclone，把目录放到 F:\DanmakuRender_AutoUp，然后 Start_DMR.bat
+# 装 ffmpeg / rclone，把目录放到 F:\DanmakuRepo，然后 Start_DMR.bat
 ```
 
 ⚠️ 私有仓库含主播直播间链接，**绝不能改成 public**。
@@ -181,6 +184,7 @@ DMR-停止.bat          优雅停止（含录制子进程）
 DMR-看实时日志.bat     滚动日志 + 定期状态行
 DMR-添加主播.bat      剪贴板里的链接 → 新任务
 DMR-重启后检查.bat     重启后自检：自动登录、会话位置、窗口可见性
+DMR-推送全部.bat      推两个仓库（公开脱敏 + 私有完全体）
 ```
 
 > 平时只有「添加主播」和「看实时日志」会用。启动/停止是应急操作 ——
@@ -321,8 +325,8 @@ python tools/push_all.py --apply    # 同步 + 提交 + 推送两个仓库
 
 | 仓库 | 内容 | 说明 |
 |---|---|---|
-| 公开 `DanmakuRepo` → `prod-sync` | `master` 的树 + 10 个发布脚手架（示例配置、脱敏工具） | **脱敏**：无 configs/、无状态库、无内网地址 |
-| 私有 `DanmakuRepo-Full` → `main` | `master` 全部内容 **+ `configs/` + `.temp/` + 状态库** | **完全体**，克隆下来放到 `F:\DanmakuRender_AutoUp` 就能直接跑 |
+| 公开 `DanmakuRepo` → `main` | `master` 的树 + 10 个发布脚手架（示例配置、脱敏工具） | **脱敏**：无 configs/、无状态库、无内网地址 |
+| 私有 `DanmakuRepo-Full` → `main` | `master` 全部内容 **+ `configs/` + `.temp/` + 状态库** | **完全体**，克隆下来放到 `F:\DanmakuRepo` 就能直接跑 |
 
 工具会拒绝在 `master` 有未提交改动时推送（宁可让你先整理，也不推半截内容）。
 两个 worktree（`-prodsync` / `-full`）由 `git worktree` 维护 ——

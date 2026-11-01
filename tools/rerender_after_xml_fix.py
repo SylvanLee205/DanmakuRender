@@ -21,14 +21,14 @@ import logging
 import os
 import sys
 
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 sys.path.insert(0, UP)
 os.chdir(UP)
 
 TARGETS = [
-    r'F:\DanmakuRender_AutoUp\直播回放\vvu\vvu-2026年10月15日19点30分.mkv',
-    r'F:\DanmakuRender_AutoUp\直播回放\小鱼大王\小鱼大王-2026年10月15日21点21分.mkv',
-    r'F:\DanmakuRender_AutoUp\直播回放\vvu\vvu-2026年10月15日21点26分.mkv',
+    r'F:\DanmakuRepo\直播回放\vvu\vvu-2026年10月15日19点30分.mkv',
+    r'F:\DanmakuRepo\直播回放\小鱼大王\小鱼大王-2026年10月15日21点21分.mkv',
+    r'F:\DanmakuRepo\直播回放\vvu\vvu-2026年10月15日21点26分.mkv',
 ]
 
 logging.basicConfig(level=logging.WARNING,

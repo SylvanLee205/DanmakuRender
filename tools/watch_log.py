@@ -16,7 +16,7 @@ import subprocess
 import sys
 import time
 
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 LOGDIR = os.path.join(UP, 'logs')
 TAIL_LINES = 40
 STATUS_EVERY = 15

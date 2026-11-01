@@ -50,7 +50,7 @@ import sys
 import time
 import traceback
 
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 BAT = os.path.join(UP, 'Start_Render.bat')
 STOP = os.path.join(UP, 'tools', 'stop_dmr.py')
 PY = os.path.join(UP, '.venv', 'Scripts', 'python.exe')

@@ -6,7 +6,7 @@ import re
 import subprocess
 import time
 
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 RCLONE = r'C:\User Program Files\rclone-v1.75.1\rclone.exe'
 NEW = os.path.join(os.environ['LOCALAPPDATA'], 'CloudDrive.WinUI')
 

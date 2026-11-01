@@ -7,7 +7,7 @@ import subprocess
 
 NEW = os.path.join(os.environ['LOCALAPPDATA'], 'CloudDrive.WinUI')
 TMP = os.environ['TEMP']
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 REPLAY = os.path.join(UP, '直播回放')
 
 

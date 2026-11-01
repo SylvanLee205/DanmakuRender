@@ -18,7 +18,7 @@ import os
 import sys
 import types
 
-sys.path.insert(0, r'F:\DanmakuRender_AutoUp')
+sys.path.insert(0, r'F:\DanmakuRepo')
 
 PASS, FAIL = [], []
 

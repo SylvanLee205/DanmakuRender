@@ -13,7 +13,7 @@ import os
 import shutil
 import time
 
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 BAT = os.path.join(UP, 'Start_Render.bat')
 
 BAT_ASCII = r'''@echo off
@@ -44,7 +44,7 @@ echo [%date% %time%] Starting DanmakuRepo ...
 
 rem switch to project drive and dir
 F:
-cd "F:\DanmakuRender_AutoUp"
+cd "F:\DanmakuRepo"
 
 rem run in venv
 rem   --quiet : keep all INFO (so each streamer's load/live state is visible)

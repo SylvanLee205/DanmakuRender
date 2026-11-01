@@ -29,7 +29,7 @@ import subprocess
 import sys
 import time
 
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 DRY_RUN = '--dry-run' in sys.argv
 
 

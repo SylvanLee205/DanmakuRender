@@ -2,7 +2,7 @@
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'SilentlyContinue'
-$root = 'F:\DanmakuRender_AutoUp'
+$root = 'F:\DanmakuRepo'
 $out  = Join-Path $root '直播回放'
 
 function Line { param($c='DarkGray') Write-Host ('-' * 66) -ForegroundColor $c }

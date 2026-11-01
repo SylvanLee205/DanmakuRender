@@ -23,7 +23,7 @@ import subprocess
 import sys
 import time
 
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 D = os.path.join(UP, '直播回放', '哭哭不嘻嘻')
 DM = os.path.join(UP, '直播回放', '哭哭不嘻嘻（弹幕版）')
 

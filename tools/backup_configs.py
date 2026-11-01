@@ -35,7 +35,7 @@ import shutil
 import sys
 import time
 
-ROOT = r'F:\DanmakuRender_AutoUp'
+ROOT = r'F:\DanmakuRepo'
 CONFIGS = os.path.join(ROOT, 'configs')
 SNAP_ROOT = r'F:\_DMR配置快照'
 MANIFEST = 'manifest.json'

@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import sys
 
-TMP = r'F:\DanmakuRender_AutoUp\.temp\_trunc_test'
+TMP = r'F:\DanmakuRepo\.temp\_trunc_test'
 shutil.rmtree(TMP, ignore_errors=True)
 os.makedirs(TMP, exist_ok=True)
 

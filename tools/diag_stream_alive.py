@@ -9,8 +9,8 @@ import subprocess
 import sys
 import time
 
-sys.path.insert(0, r'F:\DanmakuRender_AutoUp')
-os.chdir(r'F:\DanmakuRender_AutoUp')
+sys.path.insert(0, r'F:\DanmakuRepo')
+os.chdir(r'F:\DanmakuRepo')
 import logging
 logging.basicConfig(level=logging.CRITICAL)
 
@@ -19,7 +19,7 @@ from DMR.LiveAPI import LiveAPI
 
 TASK = '断尾人类'
 
-cfg = Config(r'F:\DanmakuRender_AutoUp\configs\global.yml')
+cfg = Config(r'F:\DanmakuRepo\configs\global.yml')
 t = cfg.replay_config.get(TASK)
 if not t:
     print(f'  找不到任务 {TASK}')

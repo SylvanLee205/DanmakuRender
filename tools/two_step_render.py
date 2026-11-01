@@ -14,7 +14,7 @@ import subprocess
 import sys
 import time
 
-os.chdir(r'F:\DanmakuRender_AutoUp')
+os.chdir(r'F:\DanmakuRepo')
 
 # 可从命令行传入 STEM（不传就用默认的那个）
 STEM = (sys.argv[1] if len(sys.argv) > 1

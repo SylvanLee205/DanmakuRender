@@ -15,7 +15,7 @@ import subprocess
 import sys
 import tempfile
 
-PROD = r'F:\DanmakuRender_AutoUp'
+PROD = r'F:\DanmakuRepo'
 os.chdir(PROD)
 sys.path.insert(0, PROD)
 logging.basicConfig(level=logging.CRITICAL)

@@ -13,7 +13,7 @@ import shutil
 import subprocess
 import time
 
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 BAT = os.path.join(UP, 'Start_Render.bat')
 CLEANER = os.path.join(UP, 'DMR', 'Cleaner', '__init__.py')
 

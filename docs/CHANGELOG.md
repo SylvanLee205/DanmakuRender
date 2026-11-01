@@ -152,13 +152,55 @@ python -B -m unittest discover -s unit_tests -t .
 | 代码包名 `DMR/` 与全部 `from DMR...` import | 缩写巧合，改了要动 363 处 import 和 120 个文件 |
 | 配置键 `dmr_engine_args` | 三层配置合并的顶层键，改了偏离上游基准 |
 | 日志前缀 `DMR-*.log`、桌面脚本 `DMR-*.bat`、任务配置 `DMR-*.yml` | 同上，且都只是缩写 |
-| 项目目录 `F:\DanmakuRender_AutoUp` | 约 130 处硬编码路径引用它，改名需停生产 + 移目录 + 全量验证，收益仅为观感 |
+
+> 当时还保留了项目目录 `F:\DanmakuRender_AutoUp`。**同日晚些时候已一并改名**，
+> 见下面《项目目录改名为 `F:\DanmakuRepo`》。
 
 **升级注意**
 
 - 如果你**手工**创建过 `DanmakuRender_*` 计划任务，需要按上表改名，
   否则 `Fix_Boot_Task.bat` 会新建一个 `DMR_Boot`，两个开机任务并存会双启动。
 - 已有安装的旧任务不会自动迁移，脚本也不会去找旧名字。
+
+---
+
+## 项目目录改名为 `F:\DanmakuRepo` + 分支整理（2026-11-02）
+
+### 目录改名
+
+生产目录从 `F:\DanmakuRender_AutoUp` 改为 **`F:\DanmakuRepo`**，
+代码里最后一个旧名字也清掉了。
+
+改了这些地方（漏一个就跑不起来，逐项都验证过）：
+
+| 位置 | 内容 |
+|---|---|
+| 代码与脚本 | **205 处**硬编码路径，涉及 **133 个文件**（`tools/*.py` 的 `UP` 常量、`*.bat`、`*.ps1`、文档） |
+| 计划任务 ×5 | `DMR_Boot` / `DMR_Desktop` / `DMR_SessionWatch` / `DMR_云端上传审计` / `DMR_配置快照` 的动作与工作目录 |
+| 登录启动项 | `DMR_AutoUp.cmd` 里的 `cd /d` |
+| 开机任务模板 | `tools/boot_task.xml`（UTF-16，`<Command>` 路径） |
+| git worktree | 两个 worktree（`-prodsync` / `-full`）迁移到新路径后重建 |
+| 桌面脚本 | 7 个 `DMR-*.bat` 里的 `cd /d` |
+
+**操作顺序**（关键是先停守护，否则 30 分钟后会话 0 会从旧路径把 DMR 拉起来）：
+优雅停止 DMR → 停 session 0 开机守护 → 移除 worktree → 移目录 → 批量替换 →
+重建 worktree → 改计划任务 → 改启动项 → 启动验证。
+
+**踩坑**：PowerShell 变量名不区分大小写，`$new` 和 `$NEW` 是同一个变量。
+循环里用 `$new = $xml.Replace($OLD, $NEW)` 会把 `$NEW` 覆盖成 XML，
+下一次迭代就拼出畸形 XML（报"任务 XML 格式错误"）。改用 `$oldPath` / `$newPath`。
+
+### 分支整理
+
+- `prod-sync` → **`main`**（并设为默认分支）。`prod-sync` 是内部术语，
+  `main` 才是任何人/AI 打开仓库时的默认落点。
+- `v5` 保留不动：它是 fork 锚点，删了只会失去"上游原样长什么样"的参照。
+- 打 **tag `v6.0.0`**：标记"改名 + 文档重构 + 目录改名"这一版。
+
+### 推送方式
+
+新增 `tools/push_all.py`：一条命令推两个仓库（公开脱敏 + 私有完全体），
+默认预览。桌面 `DMR-推送全部.bat`。详见 README 第九节。
 
 ---
 

@@ -18,7 +18,7 @@
 import os
 import shutil
 
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 REPLAY = os.path.join(UP, '直播回放')
 
 print('=' * 78)

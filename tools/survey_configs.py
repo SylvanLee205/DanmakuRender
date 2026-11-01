@@ -5,10 +5,10 @@ import re
 import subprocess
 import time
 
-PROD = r'F:\DanmakuRender_AutoUp'
+PROD = r'F:\DanmakuRepo'
 # NOTE 2026-11-02: this constant used to point at another copy of the
 # project (no longer maintained). It now points at this project.
-DEV = r'F:\DanmakuRender_AutoUp'
+DEV = r'F:\DanmakuRepo'
 
 
 def ps(cmd):

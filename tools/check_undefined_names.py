@@ -7,7 +7,7 @@ import ast
 import os
 import sys
 
-ROOT = r'F:\DanmakuRender_AutoUp'
+ROOT = r'F:\DanmakuRepo'
 
 # 我这些天改过的文件
 FILES = [

@@ -22,7 +22,7 @@ import subprocess
 import sys
 import time
 
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 LOG = os.path.join(UP, 'logs', 'autostart.log')
 
 DMR_Q = ("Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | "

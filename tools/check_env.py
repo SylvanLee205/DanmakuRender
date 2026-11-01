@@ -52,7 +52,7 @@ def check_pypi():
         except EOFError:
             _msg = (f'缺少 Python 依赖（{_imp_err}），且当前无控制台无法交互安装。\n'
                     f'请在命令行执行：\n'
-                    f'  cd /d F:\\DanmakuRender_AutoUp\n'
+                    f'  cd /d F:\\DanmakuRepo\n'
                     f'  .venv\\Scripts\\python.exe -m pip install -r requirements.txt\n')
             try:
                 import os

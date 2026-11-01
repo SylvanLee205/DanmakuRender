@@ -3,7 +3,7 @@ import os
 import subprocess
 import sys
 
-sys.path.insert(0, r'F:\DanmakuRender_AutoUp')
+sys.path.insert(0, r'F:\DanmakuRepo')
 
 
 def ps(cmd):

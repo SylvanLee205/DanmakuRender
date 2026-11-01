@@ -12,7 +12,7 @@ import subprocess
 # NOTE 2026-11-02: this constant used to point at another copy of the
 # project (no longer maintained). It now points at this project.
 
-REPO = r'F:\DanmakuRender_AutoUp'
+REPO = r'F:\DanmakuRepo'
 GIT = r'C:\Program Files\Git\cmd\git.exe'
 
 print('=' * 78)

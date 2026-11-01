@@ -12,8 +12,8 @@ import os
 import subprocess
 import sys
 
-sys.path.insert(0, r'F:\DanmakuRender_AutoUp')
-os.chdir(r'F:\DanmakuRender_AutoUp')
+sys.path.insert(0, r'F:\DanmakuRepo')
+os.chdir(r'F:\DanmakuRepo')
 
 import yaml
 

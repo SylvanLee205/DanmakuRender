@@ -7,7 +7,7 @@ import os
 import subprocess
 import time
 
-UP = r'F:\DanmakuRender_AutoUp'
+UP = r'F:\DanmakuRepo'
 PY = os.path.join(UP, '.venv', 'Scripts', 'python.exe')
 WD = os.path.join(UP, 'tools', 'cd2_watchdog.py')
 APP = r'C:\Program Files\CloudDrive\CloudDrive.exe'

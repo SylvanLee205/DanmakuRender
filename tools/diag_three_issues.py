@@ -31,7 +31,7 @@ if p:
     print(info)
 
 # 日志是否还在增长
-logs = sorted(glob.glob(r'F:\DanmakuRender_AutoUp\logs\DMR-2026*.log'),
+logs = sorted(glob.glob(r'F:\DanmakuRepo\logs\DMR-2026*.log'),
               key=os.path.getmtime, reverse=True)
 print('  最近日志文件:')
 for lg in logs[:3]:
