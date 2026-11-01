@@ -19,7 +19,10 @@ import os
 import sys
 import tempfile
 
-ROOT = r'F:\DanmakuRepo'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
+ROOT = _PROJECT_ROOT
 sys.path.insert(0, ROOT)
 os.chdir(ROOT)
 

@@ -11,7 +11,9 @@ import re
 import subprocess
 import sys
 
-PROD = r'F:\DanmakuRepo'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+PROD = _PROJECT_ROOT
 
 
 def ps(cmd):
@@ -95,6 +97,7 @@ print('=' * 78)
 print('4. 配置键核对：代码读取 vs 实际配置')
 print('=' * 78)
 import yaml
+
 gc = yaml.safe_load(open(os.path.join(PROD, 'configs', 'global.yml'),
                          encoding='utf-8')) or {}
 gcd = yaml.safe_load(open(os.path.join(PROD, 'DMR', 'Config', 'default.yml'),

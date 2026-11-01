@@ -7,7 +7,10 @@ import shutil
 import sqlite3
 import time
 
-DB = r'F:\DanmakuRepo\logs\dmr_state.db'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
+DB = _PROJECT_ROOT + r'\logs\dmr_state.db'
 TASK = '_引擎测试'
 
 bak = DB + '.bak-purge-' + time.strftime('%Y%m%d-%H%M%S')

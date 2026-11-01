@@ -16,7 +16,9 @@ import subprocess
 import sys
 import time
 
-PROD = r'F:\DanmakuRepo'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+PROD = _PROJECT_ROOT
 DB = os.path.join(PROD, 'logs', 'dmr_state.db')
 RCLONE = r'C:\User Program Files\rclone-v1.75.1\rclone.exe'
 
@@ -78,6 +80,7 @@ logging.basicConfig(level=logging.CRITICAL)
 import types
 import yaml
 from DMR.utils import evaluate_upload_skip_rule
+
 
 cfg = yaml.safe_load(open(os.path.join(PROD, 'configs', 'global.yml'),
                           encoding='utf-8'))

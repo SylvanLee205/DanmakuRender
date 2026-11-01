@@ -29,15 +29,18 @@ import shutil
 import subprocess
 import sys
 
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
 try:
     sys.stdout.reconfigure(errors='replace')
     sys.stderr.reconfigure(errors='replace')
 except Exception:
     pass
 
-PROD = r'F:\DanmakuRepo'
-WT_PUBLIC = r'F:\DanmakuRepo-prodsync'
-WT_FULL = r'F:\DanmakuRepo-full'
+PROD = _PROJECT_ROOT
+WT_PUBLIC = _PROJECT_ROOT + '-prodsync'
+WT_FULL = _PROJECT_ROOT + '-full'
 
 PUBLIC_BRANCH = 'main'
 FULL_BRANCH = 'full-backup'

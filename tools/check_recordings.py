@@ -12,9 +12,12 @@ import os
 import subprocess
 import sys
 
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
 FFPROBE = r'C:\User Program Files\FFmpeg\bin\ffprobe.exe'
 FFMPEG = r'C:\User Program Files\FFmpeg\bin\ffmpeg.exe'
-ROOT = r'F:\DanmakuRepo\直播回放'
+ROOT = _PROJECT_ROOT + r'\直播回放'
 
 
 def probe(path, timeout=60):

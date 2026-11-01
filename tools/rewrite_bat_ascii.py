@@ -25,7 +25,10 @@ import os
 import shutil
 import time
 
-UP = r'F:\DanmakuRepo'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
+UP = _PROJECT_ROOT
 BAT = os.path.join(UP, 'Start_Render.bat')
 NOTIFY = os.path.join(UP, 'notify_content.txt')
 
@@ -50,7 +53,7 @@ title DMR_Guard
 
 rem --- config ---
 set "API_URL=https://17530.push.ft07.com/send/sctp17530thl3urer2dsbnw3rnqyxzep.send"
-set "NOTIFY_FILE=F:\DanmakuRepo\notify_content.txt"
+set "NOTIFY_FILE=%~dp0notify_content.txt"
 rem ---------------
 
 :loop
@@ -63,8 +66,7 @@ rem   --data-urlencode "desp@file" : read body from UTF-8 file
 curl -s -m 15 --data-urlencode "title=DanmakuRepo" --data-urlencode "desp@%NOTIFY_FILE%" "%API_URL%" >nul 2>&1
 
 rem switch to project drive and dir
-F:
-cd "F:\DanmakuRepo"
+cd /d "%~dp0"
 
 rem run in venv (quiet: only key progress + warnings)
 ".\.venv\Scripts\python.exe" main.py --quiet

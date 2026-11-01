@@ -26,11 +26,14 @@ import sys
 import tempfile
 import time
 
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FFPROBE = r'C:\User Program Files\FFmpeg\bin\ffprobe.exe'
-VENV_PY = r'F:\DanmakuRepo\.venv\Scripts\python.exe'
+VENV_PY = _PROJECT_ROOT + r'\.venv\Scripts\python.exe'
 
 
 def log(msg):

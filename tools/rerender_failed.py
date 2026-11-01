@@ -4,13 +4,15 @@ import subprocess
 import sys
 import time
 
-UP = r'F:\DanmakuRepo'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+UP = _PROJECT_ROOT
 sys.path.insert(0, UP)
 os.chdir(UP)
 
 TARGETS = [
-    r'F:\DanmakuRepo\直播回放\苏苏没烦恼\苏苏没烦恼-2026年10月04日00点24分.mkv',
-    r'F:\DanmakuRepo\直播回放\哭哭不嘻嘻\哭哭不嘻嘻-2026年10月04日00点24分.mkv',
+    _PROJECT_ROOT + r'\直播回放\苏苏没烦恼\苏苏没烦恼-2026年10月04日00点24分.mkv',
+    _PROJECT_ROOT + r'\直播回放\哭哭不嘻嘻\哭哭不嘻嘻-2026年10月04日00点24分.mkv',
 ]
 
 import logging
@@ -19,6 +21,7 @@ logging.basicConfig(level=logging.WARNING, format='    [%(levelname)s] %(message
 from DMR.Config import Config
 from DMR.Render.dmrender import DmRender
 from DMR.utils import VideoInfo, StreamerInfo
+
 
 cfg = Config('configs/global.yml')
 render_args = cfg.global_config['render_args']['dmrender']

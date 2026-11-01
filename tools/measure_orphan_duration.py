@@ -9,8 +9,10 @@ import re
 import subprocess
 import time
 
-D = r'F:\DanmakuRepo\直播回放\哭哭不嘻嘻'
-DM = r'F:\DanmakuRepo\直播回放\哭哭不嘻嘻（弹幕版）'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+D = _PROJECT_ROOT + r'\直播回放\哭哭不嘻嘻'
+DM = _PROJECT_ROOT + r'\直播回放\哭哭不嘻嘻（弹幕版）'
 
 
 def real_duration(p):
@@ -86,6 +88,7 @@ print('★ 重叠分析')
 print('=' * 78)
 # 孤儿的时间段（从文件名时间戳推）
 import datetime
+
 for f in flvs:
     m = re.search(r'-(\d{14})-', f)
     if not m:

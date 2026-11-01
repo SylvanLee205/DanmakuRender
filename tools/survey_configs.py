@@ -5,10 +5,13 @@ import re
 import subprocess
 import time
 
-PROD = r'F:\DanmakuRepo'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
+PROD = _PROJECT_ROOT
 # NOTE 2026-11-02: this constant used to point at another copy of the
 # project (no longer maintained). It now points at this project.
-DEV = r'F:\DanmakuRepo'
+DEV = _PROJECT_ROOT
 
 
 def ps(cmd):

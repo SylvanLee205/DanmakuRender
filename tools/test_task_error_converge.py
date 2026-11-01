@@ -18,7 +18,9 @@ import os
 import sys
 import types
 
-sys.path.insert(0, r'F:\DanmakuRepo')
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+sys.path.insert(0, _PROJECT_ROOT)
 
 PASS, FAIL = [], []
 
@@ -31,6 +33,7 @@ def check(name, cond, detail=''):
 # ── 构造一个最小的 LiveEvents 实例（绕开真正的 Config） ──────────────
 from DMR.Task.liveevents import LiveEvents
 from DMR.utils import PipeMessage, VideoInfo, StreamerInfo
+
 
 
 class FakeLogger:

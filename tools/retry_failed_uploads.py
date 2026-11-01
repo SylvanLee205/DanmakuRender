@@ -4,7 +4,10 @@ import os
 import subprocess
 import time
 
-UP = r'F:\DanmakuRepo'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
+UP = _PROJECT_ROOT
 RCLONE = r'C:\User Program Files\rclone-v1.75.1\rclone.exe'
 os.chdir(UP)
 

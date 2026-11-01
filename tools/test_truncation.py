@@ -7,7 +7,10 @@ import shutil
 import subprocess
 import sys
 
-TMP = r'F:\DanmakuRepo\.temp\_trunc_test'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
+TMP = _PROJECT_ROOT + r'\.temp\_trunc_test'
 shutil.rmtree(TMP, ignore_errors=True)
 os.makedirs(TMP, exist_ok=True)
 

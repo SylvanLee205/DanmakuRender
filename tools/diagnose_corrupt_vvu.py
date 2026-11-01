@@ -12,7 +12,10 @@ import json
 import os
 import subprocess
 
-UP = r'F:\DanmakuRepo'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
+UP = _PROJECT_ROOT
 VF = os.path.join(UP, '直播回放', 'vvu', 'vvu-2026年10月15日21点26分.mkv')
 DM = os.path.join(UP, '直播回放', 'vvu', 'vvu-2026年10月15日21点26分.ass')
 

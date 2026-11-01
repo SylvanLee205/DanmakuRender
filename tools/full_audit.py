@@ -13,11 +13,14 @@ import re
 import subprocess
 import sys
 
-PROD = r'F:\DanmakuRepo'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+PROD = _PROJECT_ROOT
 sys.path.insert(0, PROD)
 os.chdir(PROD)
 
 import yaml
+
 
 print('=' * 78)
 print('一、global.yml 现状与历史快照对比')

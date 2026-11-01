@@ -10,7 +10,10 @@ import shutil
 import sqlite3
 import subprocess
 
-UP = r'F:\DanmakuRepo'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
+UP = _PROJECT_ROOT
 REPLAY = os.path.join(UP, '直播回放')
 SVC = r'C:\Windows\System32\config\systemprofile\Waytech\CloudDrive2'
 TMP = os.environ['TEMP']

@@ -5,7 +5,9 @@ import sys
 
 import yaml
 
-UP = r'F:\DanmakuRepo'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+UP = _PROJECT_ROOT
 sys.path.insert(0, UP)
 os.chdir(UP)
 
@@ -78,6 +80,7 @@ print('=' * 78)
 import logging
 logging.basicConfig(level=logging.ERROR)
 from DMR.Config import Config
+
 cfg = Config('configs/global.yml')
 bad = []
 for r in sorted(rows, key=lambda x: x['task']):

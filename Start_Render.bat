@@ -26,7 +26,7 @@ echo [%date% %time%] Starting DanmakuRepo ...
 
 rem switch to project drive and dir
 F:
-cd "F:\DanmakuRepo"
+cd /d "%~dp0"
 
 rem run in venv
 rem   --quiet : keep all INFO (so each streamer's load/live state is visible)

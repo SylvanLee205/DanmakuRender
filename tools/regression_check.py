@@ -15,7 +15,9 @@ import subprocess
 import sys
 import tempfile
 
-PROD = r'F:\DanmakuRepo'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+PROD = _PROJECT_ROOT
 os.chdir(PROD)
 sys.path.insert(0, PROD)
 logging.basicConfig(level=logging.CRITICAL)
@@ -50,6 +52,7 @@ if dmv:
 print()
 print('2. Uploader 能否用 subprocess 引擎创建')
 from DMR.Uploader import Uploader
+
 try:
     task = {
         'engine': 'subprocess',

@@ -12,13 +12,16 @@ import sqlite3
 import subprocess
 import time
 
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
 RCLONE = r'C:\User Program Files\rclone-v1.75.1\rclone.exe'
 RCLONE_CFG = os.path.join(os.environ['APPDATA'], 'rclone', 'rclone.conf')
 SVC_NAME = 'CloudDrive2'
 SVC_PORT = 19798
 APP_EXE = r'C:\Program Files\CloudDrive\CloudDrive.exe'
 SVC_ROOT = r'C:\Windows\System32\config\systemprofile\Waytech\CloudDrive2'
-UP = r'F:\DanmakuRepo'
+UP = _PROJECT_ROOT
 
 
 def ps(cmd):

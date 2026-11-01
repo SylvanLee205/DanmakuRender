@@ -16,6 +16,9 @@ import sqlite3
 import subprocess
 import time
 
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
 NEW = os.path.join(os.environ['LOCALAPPDATA'], 'CloudDrive.WinUI')
 APP = r'C:\Program Files\CloudDrive\CloudDrive.exe'
 RCLONE = r'C:\User Program Files\rclone-v1.75.1\rclone.exe'
@@ -133,7 +136,7 @@ state = {
     'cooldown_until': time.strftime('%Y-%m-%d %H:%M:%S',
                                     time.localtime(time.time() + 6 * 3600)),
 }
-sp = r'F:\DanmakuRepo\.temp\baidu_cooldown.json'
+sp = _PROJECT_ROOT + r'\.temp\baidu_cooldown.json'
 os.makedirs(os.path.dirname(sp), exist_ok=True)
 json.dump(state, open(sp, 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
 print(f'\n  冷却记录已写入 {sp}')

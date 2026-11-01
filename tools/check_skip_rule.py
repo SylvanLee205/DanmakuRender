@@ -12,10 +12,13 @@ import os
 import subprocess
 import sys
 
-sys.path.insert(0, r'F:\DanmakuRepo')
-os.chdir(r'F:\DanmakuRepo')
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+sys.path.insert(0, _PROJECT_ROOT)
+os.chdir(_PROJECT_ROOT)
 
 import yaml
+
 
 TARGETS = [
     r'直播回放\小鱼大王（弹幕版）\小鱼大王-2026年10月17日22点35分（弹幕版）.mp4',

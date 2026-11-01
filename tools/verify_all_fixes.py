@@ -5,7 +5,9 @@ import logging
 import os
 import sys
 
-UP = r'F:\DanmakuRepo'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+UP = _PROJECT_ROOT
 sys.path.insert(0, UP)
 os.chdir(UP)
 logging.basicConfig(level=logging.ERROR)
@@ -47,6 +49,7 @@ has_zero = 'out_size == 0' in src_dm
 print(f'  [4] 渲染产物 0 字节校验             : {"OK" if has_zero else "FAIL"}')
 
 from DMR.Task.liveevents import LiveEvents
+
 src_le = inspect.getsource(LiveEvents)
 ok5 = "'render/error': self.onTaskError" in src_le
 ok6 = "'uploader/error': self.onTaskError" in src_le

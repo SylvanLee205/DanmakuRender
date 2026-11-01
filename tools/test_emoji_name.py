@@ -2,8 +2,12 @@
 # NOTE 2026-11-02: used to point at another copy of the project (no longer maintained).
 import sys
 
-sys.path.insert(0, r'F:\DanmakuRepo')
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+sys.path.insert(0, _PROJECT_ROOT)
 from DMR.Uploader.subprocess_uploader import safe_remote_name, has_bad_remote_chars
+import os
+
 
 CASES = [
     '相扑猫💦-2026年10月01日13点13分（弹幕版）.mp4',

@@ -7,7 +7,10 @@ import os
 import subprocess
 import sys
 
-os.chdir(r'F:\DanmakuRepo')
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
+os.chdir(_PROJECT_ROOT)
 
 SRC = r'直播回放\哭哭不嘻嘻\哭哭不嘻嘻-2026年10月19日03点39分.ts'
 ASS = os.path.abspath(r'直播回放\哭哭不嘻嘻\哭哭不嘻嘻-2026年10月19日03点39分.ass')

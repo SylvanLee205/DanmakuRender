@@ -16,8 +16,10 @@ import re
 import subprocess
 import tempfile
 
-D = r'F:\DanmakuRepo\直播回放\哭哭不嘻嘻'
-DM = r'F:\DanmakuRepo\直播回放\哭哭不嘻嘻（弹幕版）'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+D = _PROJECT_ROOT + r'\直播回放\哭哭不嘻嘻'
+DM = _PROJECT_ROOT + r'\直播回放\哭哭不嘻嘻（弹幕版）'
 
 orphan3 = None
 for f in os.listdir(D):
@@ -118,4 +120,5 @@ else:
     print('  ⚠ 无法得出 SSIM 结论')
 
 import shutil
+
 shutil.rmtree(tmpdir, ignore_errors=True)

@@ -43,7 +43,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$root = 'F:\DanmakuRepo'
+$root = Split-Path -Parent $PSScriptRoot   # tools/ 的上一级 = 项目根
 $pythonw = Join-Path $root '.venv\Scripts\pythonw.exe'
 $script = Join-Path $root 'tools\autostart_launch.py'
 

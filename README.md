@@ -45,12 +45,11 @@
 | 桌面/根目录脚本 | `DMR-*.bat`、`Start_DMR.bat` | |
 | 计划任务 | `DMR_Boot` / `DMR_SessionWatch` / `DMR_Desktop` | |
 
-**项目目录也是 `F:\DanmakuRepo`**（2026-11-02 从 `F:\DanmakuRender_AutoUp` 改名，
-同时把代码里 205 处硬编码路径、5 个计划任务的动作路径、Startup 启动项一起改掉了）。
+**项目目录在 `F:\DanmakuRepo`**（2026-11-02 从 `F:\DanmakuRender_AutoUp` 改名）。
 
-⚠️ **换机器部署时请放回这个路径** —— 代码里仍有约 200 处绝对路径，改路径要动全部
-`tools/*.py` 的 `UP` 常量、`*.bat`、计划任务动作。想换个位置的话，全局搜索替换
-`F:\DanmakuRepo` 即可。
+**但代码不依赖这个路径** —— 所有工具用 `_PROJECT_ROOT = dirname(dirname(__file__))`
+自动识别自己所在的仓库根，shell 脚本用 `%~dp0`，计划任务在安装时按实际路径生成。
+**克隆到任何目录都能直接跑**，不用改任何东西。
 
 ---
 
@@ -153,12 +152,26 @@ Start_DMR.bat          # 守护循环，进程退出后 10 秒自动重拉
 
 代码在公开仓库，**能直接跑起来的东西在私有仓库 `DanmakuRepo-Full`**：
 它除了代码还有 `configs/`（含 33 个主播链接）和 `logs/dmr_state.db`。
+**克隆到任意目录都行**，不用放在特定路径：
 
 ```bash
-git clone <私有仓库>
+git clone https://github.com/SylvanLee205/DanmakuRepo-Full
+cd DanmakuRepo-Full
 python -m venv .venv && .venv\Scripts\pip install -r requirements.txt
-# 装 ffmpeg / rclone，把目录放到 F:\DanmakuRepo，然后 Start_DMR.bat
+# 装 ffmpeg（放 tools/ 或加进 PATH）和 rclone，然后：
+Start_DMR.bat
 ```
+
+**三个硬性前提**（缺一个都起不来）：
+
+| 前提 | 说明 |
+|---|---|
+| Python 3.11 | 3.12+ 未验证，`requirements.txt` 按 3.11 锁的 |
+| **ffmpeg** | 放 `tools/` 或进 PATH。**缺了连配置都加载不了**（会在 `check_ffmpeg` 卡住问你要安装） |
+| rclone | 上传用。不装只影响上传，录制渲染照常 |
+
+> 计划任务需要自己重建（`Fix_Boot_Task.bat` / `tools/install_session_tasks.ps1`
+> 都会按**当前所在目录**生成动作路径，不会指错）。纯手动跑则不建也能用。
 
 ⚠️ 私有仓库含主播直播间链接，**绝不能改成 public**。
 

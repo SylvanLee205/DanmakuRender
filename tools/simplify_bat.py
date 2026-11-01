@@ -13,7 +13,10 @@ import os
 import shutil
 import time
 
-UP = r'F:\DanmakuRepo'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
+UP = _PROJECT_ROOT
 BAT = os.path.join(UP, 'Start_Render.bat')
 
 BAT_ASCII = r'''@echo off
@@ -43,8 +46,7 @@ cls
 echo [%date% %time%] Starting DanmakuRepo ...
 
 rem switch to project drive and dir
-F:
-cd "F:\DanmakuRepo"
+cd /d "%~dp0"
 
 rem run in venv
 rem   --quiet : keep all INFO (so each streamer's load/live state is visible)

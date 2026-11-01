@@ -16,8 +16,11 @@ import os
 import shutil
 import time
 
-SRC = r'F:\DanmakuRepo'
-DST = r'F:\DanmakuRepo'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
+SRC = _PROJECT_ROOT
+DST = _PROJECT_ROOT
 
 # 要同步的文件（相对路径）—— 全是代码/文档，不含个人配置
 SYNC_FILES = [

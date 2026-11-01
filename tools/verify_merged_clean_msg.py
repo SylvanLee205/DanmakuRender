@@ -3,7 +3,9 @@ import os
 import subprocess
 import sys
 
-sys.path.insert(0, r'F:\DanmakuRepo')
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+sys.path.insert(0, _PROJECT_ROOT)
 
 
 def ps(cmd):
@@ -55,6 +57,7 @@ print('=' * 78)
 print('3. 确认 PROGRESS 级别注册')
 print('=' * 78)
 import logging
+
 try:
     from DMR.Task.liveevents import PROGRESS
     print(f'  PROGRESS 常量 = {PROGRESS}')

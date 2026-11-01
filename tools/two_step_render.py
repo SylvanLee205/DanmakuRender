@@ -14,7 +14,10 @@ import subprocess
 import sys
 import time
 
-os.chdir(r'F:\DanmakuRepo')
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
+os.chdir(_PROJECT_ROOT)
 
 # 可从命令行传入 STEM（不传就用默认的那个）
 STEM = (sys.argv[1] if len(sys.argv) > 1

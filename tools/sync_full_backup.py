@@ -29,14 +29,17 @@ import subprocess
 import sys
 import time
 
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
 try:
     sys.stdout.reconfigure(errors='replace')
     sys.stderr.reconfigure(errors='replace')
 except Exception:
     pass
 
-PROD = r'F:\DanmakuRepo'
-WT = r'F:\DanmakuRepo-full'
+PROD = _PROJECT_ROOT
+WT = _PROJECT_ROOT + '-full'
 
 # 需要同步的 .temp 文件（其余是历史日志/看门狗中间态，不进副本）
 TEMP_FILES = ['failed_renders.json', 'baidu_cooldown.json',

@@ -204,6 +204,36 @@ python -B -m unittest discover -s unit_tests -t .
 
 ---
 
+## 代码不再依赖固定路径：克隆到任何目录都能跑（2026-11-02）
+
+**解决的问题**：原来 117 个 `tools/*.py` 里写死 `UP = r'F:\DanmakuRepo'`。
+把仓库克隆到别处时，这些脚本会去操作 `F:\DanmakuRepo` ——
+那儿没有项目就报错，**那儿恰好有另一个副本就是静默操作错对象**。
+
+实测复现（改之前）：在克隆目录里跑 `tools/stop_dmr.py --dry-run`，
+它列出的是 `F:\DanmakuRepo` 那个真实实例的进程。
+
+改法：
+
+| 位置 | 做法 |
+|---|---|
+| `tools/*.py`（117 个） | 顶部插入 `_PROJECT_ROOT = dirname(dirname(abspath(__file__)))`，字面量改用它 |
+| 兄弟目录（`-full` / `-prodsync`） | `_PROJECT_ROOT + '-full'` |
+| `Start_Render.bat` / `Install_Boot_Task.bat` | `cd /d "%~dp0"`、`%~dp0Run_DMR.bat` |
+| `Fix_Boot_Task.bat` | 把 `boot_task.xml` 里的项目根改写成**当前实际路径**再导入（写临时文件，不动仓库里的模板） |
+| `dmr-status.ps1` / `install_session_tasks.ps1` | `$root = Split-Path -Parent $PSScriptRoot` |
+| 生成 bat 的工具（3 个） | 内嵌模板改用 `%~dp0`（那里不能塞 Python 变量） |
+
+**注意**：进程发现仍然是全局的（按命令行匹配 `main.py` / `Start_Render`），
+所以同一台机器上跑两个副本时，`stop_dmr.py` 会看到两边 —— 这是设计如此
+（它本来就是"停掉这台机器上的 DMR"）。
+
+验证：克隆到 `F:\_porttest` 后，5 个工具报告的 `_PROJECT_ROOT` 全是
+`F:\_porttest`；`clean_skipped_backlog.py` 找的是克隆目录自己的状态库。
+全项目只剩 1 处绝对路径，是 `Fix_Boot_Task.bat` 里"要替换的搜索串"，本就该在。
+
+---
+
 ## README 成为唯一入口，文档收敛（2026-11-02）
 
 **目标**：即使生产机报废，从 GitHub 克隆下来读一份 README 就能完整接手 ——

@@ -42,10 +42,13 @@ import shutil
 import subprocess
 import time
 
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
 SVC_ROOT = r'C:\Windows\System32\config\systemprofile\Waytech\CloudDrive2'
 CFG = os.path.join(SVC_ROOT, 'config.toml')
 SVC = 'CloudDrive2'
-MAIN = r'F:\DanmakuRepo\main.py'
+MAIN = _PROJECT_ROOT + r'\main.py'
 
 
 def ps(cmd):
@@ -168,7 +171,7 @@ logging.addLevelName(PROGRESS, 'PROGRESS')
     print('  已写回 main.py')
 
 # 语法检查
-r = subprocess.run([r'F:\DanmakuRepo\.venv\Scripts\python.exe', '-m', 'py_compile', MAIN],
+r = subprocess.run([_PROJECT_ROOT + r'\.venv\Scripts\python.exe', '-m', 'py_compile', MAIN],
                    capture_output=True, text=True, encoding='utf-8', errors='replace')
 print(f'  语法检查: {"✅ 通过" if r.returncode == 0 else "❌ 失败"}')
 if r.returncode != 0:
@@ -178,9 +181,9 @@ print()
 print('=' * 78)
 print('3. 验证级别解析')
 print('=' * 78)
-r = subprocess.run([r'F:\DanmakuRepo\.venv\Scripts\python.exe', MAIN, '--help'],
+r = subprocess.run([_PROJECT_ROOT + r'\.venv\Scripts\python.exe', MAIN, '--help'],
                    capture_output=True, text=True, encoding='utf-8', errors='replace',
-                   cwd=r'F:\DanmakuRepo')
+                   cwd=_PROJECT_ROOT)
 for l in (r.stdout or '').split('\n'):
     if 'quiet' in l:
         print(f'  {l.strip()}')

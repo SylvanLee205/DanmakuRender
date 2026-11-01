@@ -3,8 +3,11 @@ import os
 import subprocess
 import time
 
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
 # ── 1) default.yml ──
-P = r'F:\DanmakuRepo\DMR\Config\default.yml'
+P = _PROJECT_ROOT + r'\DMR\Config\default.yml'
 src = open(P, encoding='utf-8').read()
 if 'hw_retry' in src:
     print('  default.yml: 已存在，跳过')
@@ -36,7 +39,7 @@ else:
         print(f'  default.yml: 已在 output_resize 后插入 {len(block)} 行')
 
 # ── 2) 硬解测试 ──
-os.chdir(r'F:\DanmakuRepo')
+os.chdir(_PROJECT_ROOT)
 SRC = r'直播回放\断尾人类\断尾的人类不会喵-2026年10月18日19点56分.mkv'
 DM = r'直播回放\断尾人类\断尾的人类不会喵-2026年10月18日19点56分.ass'
 OUT = r'.temp\_hwdec_test.mp4'

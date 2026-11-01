@@ -6,7 +6,10 @@ import glob
 import os
 import re
 
-REPLAY = r'F:\DanmakuRepo\直播回放'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
+REPLAY = _PROJECT_ROOT + r'\直播回放'
 
 
 def date_of(name):

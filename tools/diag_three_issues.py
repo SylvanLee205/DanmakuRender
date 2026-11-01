@@ -8,6 +8,8 @@ import time
 import urllib.error
 import urllib.request
 
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
 
 def ps(cmd):
     r = subprocess.run(['powershell', '-NoProfile', '-Command', cmd],
@@ -31,7 +33,7 @@ if p:
     print(info)
 
 # 日志是否还在增长
-logs = sorted(glob.glob(r'F:\DanmakuRepo\logs\DMR-2026*.log'),
+logs = sorted(glob.glob(_PROJECT_ROOT + r'\logs\DMR-2026*.log'),
               key=os.path.getmtime, reverse=True)
 print('  最近日志文件:')
 for lg in logs[:3]:
@@ -114,6 +116,7 @@ cfg = os.path.join(os.environ['APPDATA'], 'rclone', 'rclone.conf')
 print('  rclone 配置:')
 txt = open(cfg, encoding='utf-8').read()
 import re
+
 m = re.search(r'^\[cd2\](.*?)(?=^\[|\Z)', txt, re.M | re.S)
 for l in (m.group(1) if m else '').split('\n'):
     if l.strip() and 'pass' not in l.lower():

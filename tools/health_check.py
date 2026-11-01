@@ -5,7 +5,9 @@ import re
 import subprocess
 import time
 
-UP = r'F:\DanmakuRepo'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+UP = _PROJECT_ROOT
 REPLAY = os.path.join(UP, '直播回放')
 SVC = r'C:\Windows\System32\config\systemprofile\Waytech\CloudDrive2'
 
@@ -37,6 +39,7 @@ print(f'  录制进程: {ps(_sg_q)} 个')
 # 队列
 import shutil
 import sqlite3
+
 dst = os.path.join(os.environ['TEMP'], 'hc_q')
 os.makedirs(dst, exist_ok=True)
 for s in ('', '-wal', '-shm'):

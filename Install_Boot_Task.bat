@@ -12,7 +12,7 @@ if errorlevel 1 (
 )
 
 set "TASK=DMR_Boot"
-set "ACTION=F:\DanmakuRepo\Run_DMR.bat"
+set "ACTION=%~dp0Run_DMR.bat"
 if not exist "%ACTION%" (
   echo [X] missing %ACTION%
   pause
@@ -29,7 +29,7 @@ echo  action  : %ACTION%
 echo.
 echo  NOTE: the task runs in session 0, so it has NO console window.
 echo        Everything it does is logged to:
-echo          F:\DanmakuRepo\logs\autostart.log
+echo          %~dp0logs\autostart.log
 echo        and DMR's own log: logs\DMR-YYYYMMDD*.log
 echo.
 schtasks /create /tn "%TASK%" /tr "%ACTION%" /sc onstart /ru "Administrator" /rp * /rl highest /f

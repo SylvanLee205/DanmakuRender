@@ -3,7 +3,10 @@ import os
 import shutil
 import subprocess
 
-TMP = r'F:\DanmakuRepo\.temp\_tsopt_test'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
+TMP = _PROJECT_ROOT + r'\.temp\_tsopt_test'
 shutil.rmtree(TMP, ignore_errors=True)
 os.makedirs(TMP, exist_ok=True)
 FF, FP = 'ffmpeg', 'ffprobe'

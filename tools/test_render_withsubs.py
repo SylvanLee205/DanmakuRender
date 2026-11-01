@@ -3,9 +3,12 @@ import os
 import subprocess
 import time
 
-SRC = r'F:\DanmakuRepo\直播回放\断尾人类\断尾的人类不会喵-2026年10月18日19点56分.mkv'
-DM = r'F:\DanmakuRepo\直播回放\断尾人类\断尾的人类不会喵-2026年10月18日19点56分.ass'
-OUTDIR = r'F:\DanmakuRepo\.temp'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
+SRC = _PROJECT_ROOT + r'\直播回放\断尾人类\断尾的人类不会喵-2026年10月18日19点56分.mkv'
+DM = _PROJECT_ROOT + r'\直播回放\断尾人类\断尾的人类不会喵-2026年10月18日19点56分.ass'
+OUTDIR = _PROJECT_ROOT + r'\.temp'
 os.makedirs(OUTDIR, exist_ok=True)
 
 # DMR 的路径转义方式：把 : 转成 \: ，反斜杠转正斜杠

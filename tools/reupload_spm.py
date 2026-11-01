@@ -12,15 +12,18 @@ import subprocess
 import sys
 import time
 
-sys.path.insert(0, r'F:\DanmakuRepo')
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+sys.path.insert(0, _PROJECT_ROOT)
 import logging
 logging.basicConfig(level=logging.WARNING, format='    [%(levelname)s] %(message)s')
 
 from DMR.Uploader.subprocess_uploader import SubprocessUploader, safe_remote_name, has_bad_remote_chars
 from DMR.utils import VideoInfo, StreamerInfo
 
+
 RCLONE = r'C:\User Program Files\rclone-v1.75.1\rclone.exe'
-UP = r'F:\DanmakuRepo'
+UP = _PROJECT_ROOT
 TASK = '相扑猫'
 LOCAL_DIR = os.path.join(UP, '直播回放', f'{TASK}（弹幕版）')
 REMOTE_DIR = f'cd2:百度网盘/DMR录播/{TASK}'

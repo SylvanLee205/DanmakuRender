@@ -16,7 +16,10 @@ import shutil
 import subprocess
 import time
 
-UP = r'F:\DanmakuRepo'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
+UP = _PROJECT_ROOT
 APP_DIR = r'C:\Program Files\CloudDrive'
 APP_CFG = os.path.join(os.environ['LOCALAPPDATA'], 'CloudDrive.WinUI')
 SVC_DIR = r'C:\Program Files\CloudDrive2'

@@ -7,8 +7,11 @@ import os
 import subprocess
 import time
 
-SRC = r'F:\DanmakuRepo\直播回放\断尾人类\断尾的人类不会喵-2026年10月18日19点56分.mkv'
-OUTDIR = r'F:\DanmakuRepo\.temp'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
+SRC = _PROJECT_ROOT + r'\直播回放\断尾人类\断尾的人类不会喵-2026年10月18日19点56分.mkv'
+OUTDIR = _PROJECT_ROOT + r'\.temp'
 os.makedirs(OUTDIR, exist_ok=True)
 
 # 取一段 60 秒（避开开头，取 600s 处，画面有变化）

@@ -1,9 +1,13 @@
 """对比原版与魔改版的关键配置是否一致。"""
 import yaml
+import os
+
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
 
 PAIRS = [
-    ('原版  F:/DanmakuRepo', r'F:\DanmakuRepo\configs\global.yml'),
-    ('魔改版 F:/DanmakuRepo', r'F:\DanmakuRepo\configs\global.yml'),
+    ('原版  F:/DanmakuRepo', _PROJECT_ROOT + r'\configs\global.yml'),
+    ('魔改版 F:/DanmakuRepo', _PROJECT_ROOT + r'\configs\global.yml'),
 ]
 
 KEYS = [

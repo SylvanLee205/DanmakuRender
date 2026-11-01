@@ -10,7 +10,10 @@ import subprocess
 import sys
 import time
 
-os.chdir(r'F:\DanmakuRepo')
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
+os.chdir(_PROJECT_ROOT)
 
 SRC = r'./直播回放/断尾人类\断尾的人类不会喵-2026年10月18日19点56分.mkv'
 DM_RAW = r'./直播回放/断尾人类\断尾的人类不会喵-2026年10月18日19点56分.ass'

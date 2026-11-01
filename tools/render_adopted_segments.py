@@ -12,14 +12,17 @@ import subprocess
 import sys
 import time
 
-sys.path.insert(0, r'F:\DanmakuRepo')
-os.chdir(r'F:\DanmakuRepo')
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+sys.path.insert(0, _PROJECT_ROOT)
+os.chdir(_PROJECT_ROOT)
 import logging
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 
 from DMR.Config import Config
 from DMR.Render.dmrender import DmRender
 from DMR.utils import VideoInfo, StreamerInfo
+
 
 TASK = '哭哭不嘻嘻'
 STREAMER = '哭哭不嘻嘻'
@@ -69,7 +72,7 @@ def main():
     ap.add_argument('--upload', action='store_true', help='渲染完顺带上传')
     args = ap.parse_args()
 
-    cfg = Config(os.path.join(r'F:\DanmakuRepo', 'configs', 'global.yml'))
+    cfg = Config(os.path.join(_PROJECT_ROOT, 'configs', 'global.yml'))
     r = DmRender(**cfg.global_config['render_args']['dmrender'])
 
     print('=' * 78)

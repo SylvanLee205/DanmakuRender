@@ -9,10 +9,13 @@
 import os
 import re
 import subprocess
+
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
 # NOTE 2026-11-02: this constant used to point at another copy of the
 # project (no longer maintained). It now points at this project.
 
-REPO = r'F:\DanmakuRepo'
+REPO = _PROJECT_ROOT
 GIT = r'C:\Program Files\Git\cmd\git.exe'
 
 print('=' * 78)

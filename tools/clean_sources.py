@@ -28,7 +28,10 @@ import re
 import sys
 import time
 
-ROOT = r'F:\DanmakuRepo'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
+ROOT = _PROJECT_ROOT
 REPLAY = os.path.join(ROOT, '直播回放')
 
 # 这些前缀/后缀表示"正在使用中"，绝对不能碰

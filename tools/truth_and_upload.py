@@ -18,9 +18,12 @@ import sqlite3
 import subprocess
 import time
 
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
 RCLONE = r'C:\User Program Files\rclone-v1.75.1\rclone.exe'
 SVC_ROOT = r'C:\Windows\System32\config\systemprofile\Waytech\CloudDrive2'
-UP = r'F:\DanmakuRepo'
+UP = _PROJECT_ROOT
 REPLAY = os.path.join(UP, '直播回放')
 TMP = os.environ['TEMP']
 

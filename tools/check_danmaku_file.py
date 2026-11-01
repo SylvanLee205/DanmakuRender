@@ -6,7 +6,9 @@ import os
 import subprocess
 import time
 
-REPLAY = r'F:\DanmakuRepo\直播回放'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+REPLAY = _PROJECT_ROOT + r'\直播回放'
 
 
 def ps(cmd):
@@ -97,7 +99,8 @@ print('=' * 78)
 print('4. DMR 日志里有没有弹幕相关错误')
 print('=' * 78)
 import glob
-logs = sorted(glob.glob(r'F:\DanmakuRepo\logs\DMR-2026*.log'),
+
+logs = sorted(glob.glob(_PROJECT_ROOT + r'\logs\DMR-2026*.log'),
               key=os.path.getmtime, reverse=True)
 hits = []
 for lg in logs[:2]:

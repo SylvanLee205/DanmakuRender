@@ -15,9 +15,22 @@ if errorlevel 1 (
 )
 
 set "TASK=DMR_Boot"
-set "XML=F:\DanmakuRepo\tools\boot_task.xml"
+set "TPL=%~dp0tools\boot_task.xml"
+rem The template stores the project root as a literal path. Rewrite it to THIS
+rem copy's location so the task works wherever the repo was cloned.
+set "ROOT=%~dp0"
+set "ROOT=%ROOT:~0,-1%"
+set "XML=%TEMP%\dmr_boot_task.xml"
+if not exist "%TPL%" (
+  echo [X] missing %TPL%
+  pause
+  exit /b 1
+)
+
+echo Preparing task XML for this copy: %ROOT%
+powershell -NoProfile -Command "$c = Get-Content -LiteralPath '%TPL%' -Raw -Encoding Unicode; $c = $c.Replace('F:\DanmakuRepo', '%ROOT%'); Set-Content -LiteralPath '%XML%' -Value $c -Encoding Unicode"
 if not exist "%XML%" (
-  echo [X] missing %XML%
+  echo [X] could not prepare %XML%
   pause
   exit /b 1
 )

@@ -10,8 +10,10 @@ import os
 import sys
 import time
 
-sys.path.insert(0, r'F:\DanmakuRepo')
-os.chdir(r'F:\DanmakuRepo')
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+sys.path.insert(0, _PROJECT_ROOT)
+os.chdir(_PROJECT_ROOT)
 logging.basicConfig(
     level=logging.INFO,
     format='  [%(levelname)s] %(name)s: %(message)s')
@@ -19,6 +21,7 @@ logging.basicConfig(
 from DMR.Config import Config
 from DMR.Render.dmrender import DmRender
 from DMR.utils import VideoInfo, StreamerInfo
+
 
 SRC = r'./直播回放/断尾人类\断尾的人类不会喵-2026年10月18日22点52分.mkv'
 DM = r'./直播回放/断尾人类\断尾的人类不会喵-2026年10月18日22点52分.ass'
@@ -28,7 +31,7 @@ if os.path.exists(OUT):
     print(f'  删除已有输出: {os.path.getsize(OUT)/1024**2:.1f} MB')
     os.remove(OUT)
 
-cfg = Config(r'F:\DanmakuRepo\configs\global.yml')
+cfg = Config(_PROJECT_ROOT + r'\configs\global.yml')
 r = DmRender(**cfg.global_config['render_args']['dmrender'])
 
 print('=' * 74)

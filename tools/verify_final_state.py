@@ -3,6 +3,8 @@ import json
 import os
 import subprocess
 
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
 RCLONE = r'C:\User Program Files\rclone-v1.75.1\rclone.exe'
 NEW = os.path.join(os.environ['LOCALAPPDATA'], 'CloudDrive.WinUI')
 
@@ -31,7 +33,8 @@ for line in m.group(1).strip().split('\n'):
 # 2. DMR 的上传命令没被污染
 print('\n[2] DMR 上传命令（global.yml）')
 import yaml
-g = yaml.safe_load(open(r'F:\DanmakuRepo\configs\global.yml', encoding='utf-8'))
+
+g = yaml.safe_load(open(_PROJECT_ROOT + r'\configs\global.yml', encoding='utf-8'))
 dv = (g.get('upload_args_task_default') or {}).get('dm_video') or []
 for one in dv:
     cmd = one.get('command') or []

@@ -3,9 +3,12 @@
 import os
 import sys
 
-sys.path.insert(0, r'F:\DanmakuRepo')
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+sys.path.insert(0, _PROJECT_ROOT)
 from DMR.Uploader.subprocess_uploader import SubprocessUploader
 from DMR.utils import VideoInfo, StreamerInfo
+
 
 up = SubprocessUploader()
 up.logger.setLevel(10)   # DEBUG

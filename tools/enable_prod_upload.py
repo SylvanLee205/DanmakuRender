@@ -11,7 +11,10 @@ import re
 import shutil
 import time
 
-PROD = r'F:\DanmakuRepo'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
+PROD = _PROJECT_ROOT
 CFG = os.path.join(PROD, 'configs')
 stamp = time.strftime('%Y%m%d-%H%M%S')
 BAK = os.path.join(PROD, 'backups', f'configs-{stamp}')

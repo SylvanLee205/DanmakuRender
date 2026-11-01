@@ -5,8 +5,12 @@
 import glob
 import re
 from collections import Counter, defaultdict
+import os
 
-LOGS = sorted(glob.glob(r'F:\DanmakuRepo\logs\DMR-*.log'))
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
+LOGS = sorted(glob.glob(_PROJECT_ROOT + r'\logs\DMR-*.log'))
 
 # 每种引擎的启动日志特征 -> 引擎名
 START_PATTERNS = [

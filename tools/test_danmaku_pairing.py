@@ -3,10 +3,13 @@
 import os
 import sys
 
-sys.path.insert(0, r'F:\DanmakuRepo')
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+sys.path.insert(0, _PROJECT_ROOT)
 from tools.recover_part import find_danmaku, _time_token
 
-D = r'F:\DanmakuRepo\直播回放\vvu'
+
+D = _PROJECT_ROOT + r'\直播回放\vvu'
 PARTS = [
     '[正在录制]vvu-20261005181052-0ba97a2cc0a511f1.flv.part',
     '[正在录制]vvu-20261005193103-3f5dedcdc0b011f1.flv.part',

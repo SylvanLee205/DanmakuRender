@@ -9,7 +9,9 @@ import re
 import subprocess
 import sys
 
-PROD = r'F:\DanmakuRepo'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+PROD = _PROJECT_ROOT
 os.chdir(PROD)
 sys.path.insert(0, PROD)
 
@@ -56,6 +58,7 @@ if not r:
 p = os.path.join(PROD, 'configs', 'global.yml')
 cfg = open(p, encoding='utf-8').read()
 import yaml as _yaml
+
 _cd = _yaml.safe_load(cfg) or {}
 _dmt = (((_cd.get('download_args') or {}).get('live') or {})
         .get('dm_filter') or {}).get('dm_type')

@@ -18,9 +18,12 @@ import subprocess
 import sys
 import time
 
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
 APP = r'C:\Program Files\CloudDrive\CloudDrive.exe'
 PORT = 29798
-ROOT = r'F:\DanmakuRepo'
+ROOT = _PROJECT_ROOT
 LOGFILE = os.path.join(ROOT, 'logs', 'cd2_watchdog.log')
 STATE = os.path.join(ROOT, '.temp', 'cd2_watchdog_state.json')
 

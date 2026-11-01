@@ -24,7 +24,10 @@ import subprocess
 import sys
 import time
 
-PROD = r'F:\DanmakuRepo'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
+PROD = _PROJECT_ROOT
 REPLAY = os.path.join(PROD, '直播回放')
 DB = os.path.join(PROD, 'logs', 'dmr_state.db')
 RCLONE = r'C:\User Program Files\rclone-v1.75.1\rclone.exe'

@@ -5,17 +5,20 @@
 import subprocess
 import sys
 
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
 # 从 WMI 拿不到（需要 psutil），这里直接按 DMR 的构造逻辑重建命令
-sys.path.insert(0, r'F:\DanmakuRepo')
+sys.path.insert(0, _PROJECT_ROOT)
 import os
-os.chdir(r'F:\DanmakuRepo')
+os.chdir(_PROJECT_ROOT)
 import logging
 logging.basicConfig(level=logging.CRITICAL)
 
 from DMR.Config import Config
 from DMR.LiveAPI import LiveAPI
 
-cfg = Config(r'F:\DanmakuRepo\configs\global.yml')
+
+cfg = Config(_PROJECT_ROOT + r'\configs\global.yml')
 task = cfg.replay_config['_引擎测试']
 da = task['download_args']
 adv = da.get('advanced_video_args') or {}

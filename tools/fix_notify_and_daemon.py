@@ -13,7 +13,10 @@ import shutil
 import subprocess
 import time
 
-UP = r'F:\DanmakuRepo'
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
+UP = _PROJECT_ROOT
 BAT = os.path.join(UP, 'Start_Render.bat')
 CLEANER = os.path.join(UP, 'DMR', 'Cleaner', '__init__.py')
 

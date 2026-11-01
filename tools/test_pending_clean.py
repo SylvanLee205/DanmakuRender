@@ -17,19 +17,22 @@ import shutil
 import sys
 import time
 
-sys.path.insert(0, r'F:\DanmakuRepo')
-os.chdir(r'F:\DanmakuRepo')
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+sys.path.insert(0, _PROJECT_ROOT)
+os.chdir(_PROJECT_ROOT)
 logging.basicConfig(level=logging.INFO,
                     format='%(levelname)s %(message)s')
 
 from DMR.Cleaner import Cleaner
 from DMR.utils import PipeMessage, FileInfo
 
+
 TMP = os.path.join('.temp', '_journal_test')
 shutil.rmtree(TMP, ignore_errors=True)
 os.makedirs(TMP, exist_ok=True)
 
-JOURNAL = os.path.join(r'F:\DanmakuRepo\logs', 'pending_clean.json')
+JOURNAL = os.path.join(_PROJECT_ROOT + r'\logs', 'pending_clean.json')
 if os.path.exists(JOURNAL):
     os.replace(JOURNAL, JOURNAL + '.bak-test')
     print(f'  备份已有清单 -> {JOURNAL}.bak-test')

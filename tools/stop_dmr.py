@@ -38,6 +38,9 @@ import os
 import sys
 import time
 
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
 try:
     import psutil
 except ImportError:  # pragma: no cover
@@ -45,7 +48,7 @@ except ImportError:  # pragma: no cover
     print('（它在 requirements.txt 里，正常环境不该出现这条）')
     sys.exit(2)
 
-UP = r'F:\DanmakuRepo'
+UP = _PROJECT_ROOT
 DRY_RUN = '--dry-run' in sys.argv
 FORCE = '--force' in sys.argv
 GRACEFUL_TIMEOUT = 180          # 等 DMR 自己收尾的最长秒数

@@ -6,13 +6,16 @@ import ast
 import os
 import sys
 
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # 项目根目录，自动识别（可放在任意路径）
+
+
 TARGETS = [
-    r'F:\DanmakuRepo\DMR\Task\liveevents.py',
-    r'F:\DanmakuRepo\DMR\Task\replaytask.py',
-    r'F:\DanmakuRepo\DMR\Render\dmrender.py',
-    r'F:\DanmakuRepo\DMR\Cleaner\__init__.py',
-    r'F:\DanmakuRepo\DMR\Render\__init__.py',
-    r'F:\DanmakuRepo\DMR\Uploader\__init__.py',
+    _PROJECT_ROOT + r'\DMR\Task\liveevents.py',
+    _PROJECT_ROOT + r'\DMR\Task\replaytask.py',
+    _PROJECT_ROOT + r'\DMR\Render\dmrender.py',
+    _PROJECT_ROOT + r'\DMR\Cleaner\__init__.py',
+    _PROJECT_ROOT + r'\DMR\Render\__init__.py',
+    _PROJECT_ROOT + r'\DMR\Uploader\__init__.py',
 ]
 
 #: 这些是 dunder / 框架回调 / 属性访问式引用，不算孤儿
