@@ -148,7 +148,7 @@ Start_DMR.bat          # 守护循环，进程退出后 10 秒自动重拉
 
 ### 换机器 / 灾难恢复
 
-代码在公开仓库，**能直接跑起来的东西在私有仓库 `DanmakuRender-Full`**：
+代码在公开仓库，**能直接跑起来的东西在私有仓库 `DanmakuRepo-Full`**：
 它除了代码还有 `configs/`（含 33 个主播链接）和 `logs/dmr_state.db`。
 
 ```bash
@@ -285,6 +285,7 @@ python tools/stop_dmr.py && Start_DMR.bat         # 3. 优雅重启
 | `clean_skipped_backlog.py` | 清"命中跳过上传规则却永不清理"的积压源视频 |
 | `purge_task_state.py` | 清停用任务的状态库记录（先备份 .db） |
 | `sync_full_backup.py` | 同步 `configs/` + 状态库到私有完整副本 |
+| `push_all.py` | **一条命令推两个仓库**：公开（脱敏）+ 私有（完全体），默认预览 |
 | `install_session_tasks.ps1` | 幂等重建 SessionWatch / Desktop 计划任务 |
 | `dmr-status.ps1` | 状态面板：进程、会话位置、窗口可见性、自动登录有效性 |
 | `post_boot_check.py` | 重启后自检：自动登录四要素、DMR 起在哪个会话 |
@@ -310,7 +311,22 @@ python -B -m unittest discover -s unit_tests -t .
 2. 看 [`docs/TODO.md`](docs/TODO.md) 的未完成项，别重复劳动。
 3. 改完**跑测试**，然后**重启验证** —— 只跑测试不算完，热加载不覆盖代码。
 
-**改完记得同步两条线**：本地 `master`（完整历史）→ `prod-sync`（脱敏公开分支）。
+**改完记得同步两条线**：本地 `master`（完整历史）→ 公开分支（脱敏）→ 私有仓库（完全体）。
+一条命令搞定：
+
+```bash
+python tools/push_all.py            # 预览：只报告会推什么，不动任何东西
+python tools/push_all.py --apply    # 同步 + 提交 + 推送两个仓库
+```
+
+| 仓库 | 内容 | 说明 |
+|---|---|---|
+| 公开 `DanmakuRepo` → `prod-sync` | `master` 的树 + 10 个发布脚手架（示例配置、脱敏工具） | **脱敏**：无 configs/、无状态库、无内网地址 |
+| 私有 `DanmakuRepo-Full` → `main` | `master` 全部内容 **+ `configs/` + `.temp/` + 状态库** | **完全体**，克隆下来放到 `F:\DanmakuRender_AutoUp` 就能直接跑 |
+
+工具会拒绝在 `master` 有未提交改动时推送（宁可让你先整理，也不推半截内容）。
+两个 worktree（`-prodsync` / `-full`）由 `git worktree` 维护 ——
+**不要在生产目录里切分支**，DMR 正跑着。
 
 ---
 
