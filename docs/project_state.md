@@ -47,7 +47,8 @@ DMR/                        核心代码
 │   ├── streamlink_sync.py   同步流下载实现
 │   └── Danmaku/
 │       ├── danmaku.py      DanmakuDownloader：驱动 DanmakuClient、过滤、分段、写 ASS
-│       └── asswriter.py    ASS 字幕写出与弹幕排布
+│       ├── asswriter.py    ASS 字幕写出与弹幕排布
+│       └── glyphs.py       字形安全清洗：写 ASS 前剔除无字形/彩色字体字符（2026-11-02 新增）
 ├── LiveAPI/
 │   ├── __init__.py         LiveAPI 包装类（GetStreamURL/GetRoomInfo/Onair…）
 │   ├── BaseAPI.py          平台 API 抽象基类；get_stream_url 默认从 get_stream_urls 随机取
@@ -90,8 +91,14 @@ DMR/                        核心代码
     └── toolsmgr.py         ffmpeg/biliup 工具自动查找与下载
 
 configs/                    录制配置（DMR-**.yml 才会被当作任务加载）
-tools/                      check_env.py（依赖检查/自动安装）、check_update
-docs/                       installation.md、usage.md
+tools/                      check_env.py（依赖检查/自动安装）、check_update.py、
+                            stop_dmr.py（优雅停止）、autostart_launch.py（登录自启）、
+                            add_room.py（粘贴链接加主播）、rename_orphans.py（孤儿分段登记）、
+                            clean_skipped_backlog.py（跳过上传积压清理）、
+                            purge_task_state.py（停用任务状态清理）、
+                            sync_full_backup.py（同步完整副本）
+docs/                       installation.md、usage.md、CHANGELOG.md、maintainer-log.md、
+                            TODO.md、project_state.md、排查记录-*.md
 .login_info/                登录凭据（bili-xiaohao.json、.bili_watch_cookies.json、cookies.json…）
 ```
 
@@ -196,9 +203,15 @@ bilibili/douyu/huya/cc/twitch 弹幕目前都在 `site_class`（类方法）里�
 
 ### 4.1 Git
 
-- 分支：`v5`（`remotes/origin/HEAD → origin/v4`）
-- HEAD：`2eb6080 feat: 录制斗鱼时移流的功能(#545)`
-- 未提交改动（**属于他人/既有进行中工作，未处理**）：
+- **公开仓库** `SylvanLee205/DanmakuRender`：
+  - `prod-sync`（**默认分支**）—— 生产环境代码，基于 v5 叠加实盘修复
+  - `v5` —— 上游发布版基线（已脱敏）
+- **私有仓库** `SylvanLee205/DanmakuRender-Full` —— 完整副本
+  （含 `configs/`、`logs/dmr_state.db`），用于灾难恢复。含主播链接等敏感信息，
+  **必须保持 private**。用桌面 `DMR-更新完整副本.bat` 更新。
+- 本地 `master` 保留完整提交历史（56+ 个提交），`prod-sync` 是脱敏后的同步分支。
+
+#### 历史上的未提交改动（2026-10-15 记录，多数已处理完毕）
 
 | 文件 | 改动摘要 |
 |---|---|
