@@ -10,6 +10,7 @@ from os.path import *
 
 from DMR.LiveAPI.danmaku import DanmakuClient
 from DMR.utils import SimpleDanmaku, replace_keywords
+from .glyphs import sanitize
 
 __all__ = ['DanmakuDownloader']
 
@@ -193,9 +194,16 @@ class DanmakuDownloader():
                         )
                     # 将绝对时间转换为相对时间
                     dm.time = dm.timestamp - self.part_start_time - self.dm_delay_fixed
+                    # 字形清洗：系统里没有任何字体能渲染的字符会让 libass 产出坏帧，
+                    # ffmpeg 断言失败后整条渲染挂掉（硬件/软件编码都救不了，详见
+                    # glyphs.py 顶部的事故记录）。2026-11-02 实盘：注音符号
+                    # 「ㄓ」(U+3103) 导致蓝羊羊不懒整场渲染 failed。
+                    dm.uname = sanitize(dm.uname)
+                    dm.content = sanitize(dm.content)
                     # 载入弹幕模板
                     if dm_templ := self.dm_template.get(dm.dtype):
                         dm.text = replace_keywords(dm_templ, dm)
+                    dm.text = sanitize(dm.text)
                     if self.dm_available(dm):
                         retry = 0
                         if self.dmwriter.add(dm):
