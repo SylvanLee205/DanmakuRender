@@ -54,7 +54,7 @@ class LiveEvents(BaseEvents):
         self.state_dict = {}
         self.ended_dict = {}
         self.logger = logging.getLogger(__name__)
-        # 状态持久化（P1）：由 DanmakuRender 注入；缺省时全部同步操作自动跳过。
+        # 状态持久化（P1）：由 DanmakuRepo 注入；缺省时全部同步操作自动跳过。
         # 现有 state_dict 仍是运行时真相，这里只做镜像写入。
         self.state_repo = config.get('state_repo') if isinstance(config, dict) else None
         #: 已创建过占位场次的 group_id（渲染/上传可能先于录制登记发生）

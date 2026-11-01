@@ -1,8 +1,9 @@
 """测试按时间戳配对弹幕。"""
+# NOTE 2026-11-02: used to point at another copy of the project (no longer maintained).
 import os
 import sys
 
-sys.path.insert(0, r'F:\DanmakuRender_Mod')
+sys.path.insert(0, r'F:\DanmakuRender_AutoUp')
 from tools.recover_part import find_danmaku, _time_token
 
 D = r'F:\DanmakuRender_AutoUp\直播回放\vvu'

@@ -8,7 +8,7 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-set "TASK=DanmakuRender_Boot"
+set "TASK=DMR_Boot"
 schtasks /query /tn "%TASK%" >nul 2>&1
 if errorlevel 1 (
   echo Task "%TASK%" not found - nothing to remove.

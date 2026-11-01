@@ -3,7 +3,7 @@ import yaml
 
 PAIRS = [
     ('原版  F:/DanmakuRender_AutoUp', r'F:\DanmakuRender_AutoUp\configs\global.yml'),
-    ('魔改版 F:/DanmakuRender_Mod', r'F:\DanmakuRender_Mod\configs\global.yml'),
+    ('魔改版 F:/DanmakuRender_AutoUp', r'F:\DanmakuRender_AutoUp\configs\global.yml'),
 ]
 
 KEYS = [

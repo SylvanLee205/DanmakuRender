@@ -241,7 +241,7 @@ def primary_font_name() -> str:
     """DMR 实际使用的正文字体（决定"哪些字符不会触发回退"）。
 
     读 ``configs/global.yml`` 的 ``download_args.live.font``；
-    读不到就退回默认 'Source Han Sans SC'（DanmakuRender 的出厂值）。
+    读不到就退回默认 'Source Han Sans SC'（DanmakuRepo 的出厂值）。
     """
     default = 'Source Han Sans SC'
     try:

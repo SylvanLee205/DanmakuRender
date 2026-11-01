@@ -1,6 +1,6 @@
 @echo off
 rem ============================================================
-rem  DanmakuRender launcher / crash-restart guard
+rem  DanmakuRepo launcher / crash-restart guard
 rem  ASCII ONLY - DO NOT add non-ASCII characters!
 rem
 rem  Why ASCII only:
@@ -16,13 +16,13 @@ rem  message reflects the real state instead of "about to start".
 rem ============================================================
 
 rem chcp 65001 keeps console output readable
-chcp 65001 >nul
+chcp 65001 <nul >nul
 
-title DanmakuRender_Guard
+title DMR_Guard
 
 :loop
 cls
-echo [%date% %time%] Starting DanmakuRender ...
+echo [%date% %time%] Starting DanmakuRepo ...
 
 rem switch to project drive and dir
 F:
@@ -38,5 +38,8 @@ echo [%date% %time%] WARNING: program exited (crash or manual close).
 echo Restarting in 10 seconds ...
 echo.
 
-timeout /t 10
+rem NOTE: ping instead of timeout - timeout fails when there is no console
+rem       (e.g. when started by a scheduled task in session 0) and the loop
+rem       would restart the program with no delay at all.
+"%SystemRoot%\System32\ping.exe" -n 11 127.0.0.1 >nul
 goto loop

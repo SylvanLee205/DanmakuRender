@@ -12,9 +12,9 @@
 三个使用场景
 ------------
 1. 登录自启（默认模式，无参数）—— 三处都走这里：
-     · Startup 目录的 DanmakuRender_AutoUp.cmd（用户登录时，未提权）
-     · 计划任务 DanmakuRender_SessionWatch（登录时 + 解锁时，管理员身份）
-     · 计划任务 DanmakuRender_Desktop（手动运行，管理员身份）
+     · Startup 目录的 DMR_AutoUp.cmd（用户登录时，未提权）
+     · 计划任务 DMR_SessionWatch（登录时 + 解锁时，管理员身份）
+     · 计划任务 DMR_Desktop（手动运行，管理员身份）
 
        .venv\\Scripts\\python.exe tools\\autostart_launch.py
 
@@ -27,7 +27,7 @@
    多个入口可能同时触发（Startup .cmd + 计划任务），用 logs/autostart.lock
    互斥，保证只有一个在动手。
 
-2. 开机任务（守护模式）—— Run_DMR.bat 是 DanmakuRender_Boot 开机任务的动作：
+2. 开机任务（守护模式）—— Run_DMR.bat 是 DMR_Boot 开机任务的动作：
 
        .venv\\Scripts\\python.exe tools\\autostart_launch.py --boot-fallback 180
 
@@ -393,7 +393,7 @@ def mode_logon() -> int:
             if not stop_all():
                 log('旧实例没有停干净，放弃迁移（避免双开踩状态库）。'
                     '若旧实例是开机任务以管理员身份拉起的，而本进程未提权，'
-                    '就会这样 —— 提权的 DanmakuRender_SessionWatch 任务会'
+                    '就会这样 —— 提权的 DMR_SessionWatch 任务会'
                     '接着完成迁移。')
                 return 1
             time.sleep(2)
@@ -472,7 +472,7 @@ def mode_supervise() -> int:
         elif decision == 'backstop':
             log(f'已等待 {int(now - dead_since)}s 登录自启仍未拉起 DMR → '
                 f'session 0 兜底启动（无窗口；要窗口请运行 '
-                f'DanmakuRender_Desktop 任务把它搬过来）。')
+                f'DMR_Desktop 任务把它搬过来）。')
             last_backstop = now
             dead_since = None
             run_foreground()

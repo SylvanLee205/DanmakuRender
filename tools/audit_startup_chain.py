@@ -83,7 +83,7 @@ for l in (out or '').split('\n'):
     if l.strip():
         print(f'  {l.strip()}')
 # 检查关键任务的执行内容
-for tn in ('DanmakuRender_配置快照', 'DanmakuRender_云端上传审计'):
+for tn in ('DMR_配置快照', 'DMR_云端上传审计'):
     o = ps(f"(Get-ScheduledTask -TaskName '{tn}' -ErrorAction SilentlyContinue)"
            f".Actions | ForEach-Object {{ $_.Execute + ' ' + $_.Arguments }}")
     if o.strip():

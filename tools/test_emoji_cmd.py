@@ -1,8 +1,9 @@
 """测试 _sanitize_rclone_copy 的命令改写（不真的上传）。"""
+# NOTE 2026-11-02: used to point at another copy of the project (no longer maintained).
 import os
 import sys
 
-sys.path.insert(0, r'F:\DanmakuRender_Mod')
+sys.path.insert(0, r'F:\DanmakuRender_AutoUp')
 from DMR.Uploader.subprocess_uploader import SubprocessUploader
 from DMR.utils import VideoInfo, StreamerInfo
 

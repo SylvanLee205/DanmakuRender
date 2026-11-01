@@ -9,13 +9,14 @@
     python tools\sync_to_production.py --dry-run    # 只看会改什么
     python tools\sync_to_production.py              # 实际同步
 """
+# NOTE 2026-11-02: used to point at another copy of the project (no longer maintained).
 import argparse
 import filecmp
 import os
 import shutil
 import time
 
-SRC = r'F:\DanmakuRender_Mod'
+SRC = r'F:\DanmakuRender_AutoUp'
 DST = r'F:\DanmakuRender_AutoUp'
 
 # 要同步的文件（相对路径）—— 全是代码/文档，不含个人配置

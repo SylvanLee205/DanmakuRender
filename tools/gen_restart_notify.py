@@ -112,7 +112,7 @@ def build(task_names=None, task_count=None):
     free_gb = disk_free_gb('F:\\')
     ver = version()
 
-    head = 'DanmakuRender 已成功复活' + (f'（v{ver}）' if ver else '')
+    head = 'DanmakuRepo 已成功复活' + (f'（v{ver}）' if ver else '')
     L = [head, '']
 
     names = list(task_names or [])
@@ -136,8 +136,8 @@ def build(task_names=None, task_count=None):
         L.append('')
         L.append(f'⚠️ 频繁重启：最近 1 小时 {recent} 次，请检查日志')
 
-    title = (f'⚠️ DanmakuRender 频繁重启（{recent}次/时）'
-             if recent >= FLAP_THRESHOLD else 'DanmakuRender 已启动')
+    title = (f'⚠️ DanmakuRepo 频繁重启（{recent}次/时）'
+             if recent >= FLAP_THRESHOLD else 'DanmakuRepo 已启动')
     return title, L
 
 

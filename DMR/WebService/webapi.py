@@ -360,7 +360,7 @@ class WebApi:
     def start(self):
         self.webapp_thread = threading.Thread(target=self.start_helper, daemon=True)
         self.webapp_thread.start()
-        self.logger.info(f'DanmakuRender 5 started at http://{self.host}:{self.port}')
+        self.logger.info(f'DanmakuRepo started at http://{self.host}:{self.port}')
 
     def stop(self):
         self.stoped = True

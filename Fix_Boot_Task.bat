@@ -14,7 +14,7 @@ if errorlevel 1 (
   exit /b
 )
 
-set "TASK=DanmakuRender_Boot"
+set "TASK=DMR_Boot"
 set "XML=F:\DanmakuRender_AutoUp\tools\boot_task.xml"
 if not exist "%XML%" (
   echo [X] missing %XML%

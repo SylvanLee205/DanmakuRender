@@ -158,7 +158,7 @@ print(f'  应用版进程: ' + (ps("Get-Process CloudDrive -ErrorAction Silently
                      "ForEach-Object { 'PID ' + $_.Id }") or '✅ 未运行'))
 print(f'  应用版自启: ' + (ps("(Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' "
                        "-ErrorAction SilentlyContinue).CloudDrive") or '✅ 已移除'))
-print(f'  看门狗任务: ' + (ps("Get-ScheduledTask -TaskName 'DanmakuRender_CD2守护' "
+print(f'  看门狗任务: ' + (ps("Get-ScheduledTask -TaskName 'DMR_CD2守护' "
                         "-ErrorAction SilentlyContinue | ForEach-Object { $_.TaskName }")
                       or '✅ 已删除'))
 r = subprocess.run([RCLONE, 'lsf', 'cd2:百度网盘/DMR录播', '--max-depth', '1'],

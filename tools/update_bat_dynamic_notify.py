@@ -15,7 +15,7 @@ BAT = os.path.join(UP, 'Start_Render.bat')
 
 BAT_ASCII = r'''@echo off
 rem ============================================================
-rem  DanmakuRender launcher (ASCII only - DO NOT add non-ASCII!)
+rem  DanmakuRepo launcher (ASCII only - DO NOT add non-ASCII!)
 rem
 rem  Why ASCII only:
 rem    cmd.exe parses this file using the SYSTEM code page (936/GBK)
@@ -29,7 +29,7 @@ rem ============================================================
 rem chcp 65001 so curl sends UTF-8 bodies correctly
 chcp 65001 >nul
 
-title DanmakuRender_Guard
+title DMR_Guard
 
 rem --- config ---
 set "API_URL=https://17530.push.ft07.com/send/sctp17530thl3urer2dsbnw3rnqyxzep.send"
@@ -39,7 +39,7 @@ rem ---------------
 
 :loop
 cls
-echo [%date% %time%] Starting DanmakuRender ...
+echo [%date% %time%] Starting DanmakuRepo ...
 
 rem switch to project drive and dir first, so python can find things
 F:
