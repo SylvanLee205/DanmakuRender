@@ -651,9 +651,52 @@ if __name__ == '__main__':
     except Exception:
         pass
 
+    # ── 优雅停止 ──
+    # 为什么不直接 psutil kill：硬杀会让 ffmpeg 来不及收尾 —— 正在录的分段
+    # 停留在 `[正在录制]` 状态、rename 不执行，正在渲染的任务也会半途而废。
+    # 走 dmr.stop() 时，ffmpeg 会收到 'q'（见 DMR/Downloader/ffmpeg.py 的
+    # communicate('q')）优雅写完当前段，随后 segment_callback 把它改名成
+    # 正式名；下次启动 reconciler 发现目录里有源视频就会补派渲染。
+    #
+    # 触发方式：stop_dmr.py 创建 .temp/graceful_stop_<PID>（带 PID，
+    # 绝不会误伤别的实例）。
+    _GRACEFUL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                 '.temp')
+    _GRACEFUL_FLAG = os.path.join(_GRACEFUL_DIR, f'graceful_stop_{os.getpid()}')
+
+    def _graceful_requested() -> bool:
+        try:
+            return os.path.isfile(_GRACEFUL_FLAG)
+        except Exception:
+            return False
+
+    def _clear_graceful_flag() -> None:
+        try:
+            os.remove(_GRACEFUL_FLAG)
+        except OSError:
+            pass
+
+    def _wait_seconds(n: int) -> None:
+        """分段 sleep 并检查优雅停止标志，比一次性 sleep(60) 响应快得多。"""
+        deadline = time.time() + n
+        while time.time() < deadline:
+            if _graceful_requested():
+                return
+            time.sleep(0.2)
+
     try:
         while 1:
-            time.sleep(60)
+            _wait_seconds(60)
+            if _graceful_requested():
+                logger.info('收到优雅停止请求，正在收尾录制与渲染...')
+                try:
+                    dmr.stop()
+                except Exception as e:
+                    logger.exception(f'优雅停止过程中出错: {e}')
+                _clear_graceful_flag()
+                logger.info('优雅停止完成，退出。')
+                exit(0)
     except KeyboardInterrupt:
+        _clear_graceful_flag()
         dmr.stop()
         exit(0)

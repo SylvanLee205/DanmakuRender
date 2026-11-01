@@ -26,19 +26,22 @@ class _FakeCoverage:
 
     # 汉字 + 拉丁 + 假 emoji + 假日文（刻意不含任何 Bopomofo/无主块字符）
     COVERED = {0x84DD, 0x7F8A, 0x751F, 0x65E5, 0x5FEB, 0x4E50, 0x6D4B, 0x8BD5,
-               0x41, 0x61, 0x3A, 0x2E, 0x1F408, 0x304B}
+               0x41, 0x61, 0x3A, 0x2E, 0x2C, 0x30, 0x20, 0x304B}
 
     # 事故字符（2026-11-02 ffmpeg 报的 0x3103）。用 chr() 显式构造，
     # 免得测试文件自身经过编辑器/编码转换后码位漂移 —— 那种情况下
     # "删掉了某个字符"的断言会假阳性通过。
     BOPOMOFO = chr(0x3103)
+    # 彩色字体专用码位：有字形但只在 COLR/CBDT 字体里，libass 会崩
+    UNSAFE = {0x1F1E8, 0x1F408, 0x1F382}   # 国旗A / 猫 / 蛋糕
 
 
 class TestSanitize(unittest.TestCase):
     def setUp(self):
         glyphs.reset_cache()
         self._orig = glyphs.get_coverage
-        glyphs.get_coverage = lambda: _FakeCoverage.COVERED
+        glyphs.get_coverage = lambda: (_FakeCoverage.COVERED,
+                                     _FakeCoverage.UNSAFE)
 
     def tearDown(self):
         glyphs.get_coverage = self._orig
@@ -70,8 +73,10 @@ class TestSanitize(unittest.TestCase):
     def test_keeps_covered_cjk(self):
         self.assertEqual(glyphs.sanitize('蓝羊羊生日快乐测试'), '蓝羊羊生日快乐测试')
 
-    def test_keeps_covered_emoji_and_kana(self):
-        self.assertEqual(glyphs.sanitize('🐈か'), '🐈か')
+    def test_keeps_covered_kana_but_drops_color_emoji(self):
+        """日文假名在主字体里 → 保留；emoji 只在彩色字体里 → 删。"""
+        self.assertEqual(glyphs.sanitize('🐈か'), 'か')
+        self.assertEqual(glyphs.sanitize('蓝🎂羊'), '蓝羊')
 
     def test_keeps_whitespace_and_control(self):
         """空白/控制字符不能被当"缺字形"处理掉（ass 结构需要）。"""
@@ -93,8 +98,50 @@ class TestSanitize(unittest.TestCase):
         self.assertEqual(glyphs.sanitize(_FakeCoverage.BOPOMOFO * 2 + ': 生日快乐'), _FakeCoverage.BOPOMOFO * 2 + ': 生日快乐')
 
     def test_empty_coverage_means_passthrough(self):
-        glyphs.get_coverage = lambda: set()
+        glyphs.get_coverage = lambda: (set(), set())
         self.assertEqual(glyphs.sanitize(_FakeCoverage.BOPOMOFO * 2), _FakeCoverage.BOPOMOFO * 2)
+
+
+class TestColorFontSafety(unittest.TestCase):
+    """第二类真凶：字符有字形，但只在彩色字体里，libass 一样崩。
+
+    2026-11-02 实盘：清掉注音ㄓ 之后渲染仍在 5 分钟处崩，最终用
+    `-f null`（不编码）证明字幕层没问题，换 libx265 也正常 ——
+    崩的是 hevc_qsv。而彩色 emoji 那一层是同一类断言的另一个触发源。
+    """
+
+    def setUp(self):
+        glyphs.reset_cache()
+        self._orig = glyphs.get_coverage
+        glyphs.get_coverage = lambda: (_FakeCoverage.COVERED,
+                                       _FakeCoverage.UNSAFE)
+
+    def tearDown(self):
+        glyphs.get_coverage = self._orig
+        glyphs.reset_cache()
+
+    def test_drops_color_only_codepoints(self):
+        """国旗区域指示符 / emoji：有字形也要删。"""
+        for cp in (0x1F1E8, 0x1F408, 0x1F382):
+            with self.subTest(cp=hex(cp)):
+                self.assertEqual(glyphs.sanitize('蓝' + chr(cp) + '羊'),
+                                 '蓝羊')
+
+    def test_keeps_ascii_even_though_color_fonts_cover_it(self):
+        """彩色字体（seguiemj）的 cmap 也含 ASCII，绝不能连带删掉。
+
+        这是 unsafe 判据从 ``color`` 改成 ``color - primary`` 的原因：
+        用 color 会把英文数字全删了（实测 sanitize('a,b:c') -> ''）。
+        """
+        text = 'hello, world: 123 abc'
+        self.assertEqual(glyphs.sanitize(text), text)
+
+    def test_is_safe_reflects_both_sets(self):
+        cov, unsafe = _FakeCoverage.COVERED, _FakeCoverage.UNSAFE
+        self.assertTrue(glyphs.is_safe(0x84DD, cov, unsafe))     # 主字体有
+        self.assertFalse(glyphs.is_safe(0x1F408, cov, unsafe))   # 彩色专用
+        self.assertFalse(glyphs.is_safe(0x3103, cov, unsafe))    # 无字形
+        self.assertTrue(glyphs.is_safe(0x2C, cov, unsafe))       # ASCII
 
 
 class TestCoverageCache(unittest.TestCase):
@@ -116,23 +163,29 @@ class TestCoverageCache(unittest.TestCase):
     def test_cache_roundtrip(self):
         sig = 'testsig'
         covered = {0x41, 0x84DD}
-        glyphs._save_cache(sig, covered)
-        loaded = glyphs._load_cache(sig)
-        self.assertEqual(loaded, covered)
+        unsafe = {0x1F408}
+        glyphs._save_cache(sig, covered, unsafe)
+        loaded_cov, loaded_unsafe = glyphs._load_cache(sig)
+        self.assertEqual(loaded_cov, covered)
+        self.assertEqual(loaded_unsafe, unsafe)
 
     def test_cache_rejects_wrong_signature(self):
-        glyphs._save_cache('sig-a', {0x41})
+        glyphs._save_cache('sig-a', {0x41}, set())
         self.assertIsNone(glyphs._load_cache('sig-b'))
 
     def test_scan_fonts_returns_nonempty_on_this_machine(self):
         """本机有字体时应能建表（CI 无字体时跳过，不算失败）。"""
-        covered = glyphs._scan_fonts()
+        covered, unsafe = glyphs._scan_fonts()
         if not covered:
             self.skipTest('本机没有可解析的字体')
         self.assertIn(0x84DD, covered, '汉字「蓝」必须可渲染')
+        self.assertIn(0x41, covered, 'ASCII 必须在表里（否则会把英文全删了）')
+        # 国旗区域指示符只存在于彩色字体 → 必须进 unsafe
+        self.assertIn(0x1F1E8, unsafe,
+                      'U+1F1E8 只能靠 SegoeUIEmoji 渲染，必须判为不安全')
 
     def test_reset_cache_removes_file(self):
-        glyphs._save_cache('sig-x', {0x41})
+        glyphs._save_cache('sig-x', {0x41}, set())
         self.assertTrue(os.path.isfile(glyphs._cache_path()))
         glyphs.reset_cache()
         self.assertFalse(os.path.isfile(glyphs._cache_path()))
