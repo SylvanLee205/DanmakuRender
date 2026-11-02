@@ -34,6 +34,29 @@ class DanmakuRepo():
         self.recovery_manager = None
         self._init_state()
 
+        # 周期性维护（日志轮转 / 磁盘水位 / 每日体检 / 索引页）。
+        # 全部动作都是"尽力而为"，失败只记 warning，绝不阻止录制。
+        self.maintenance = None
+        try:
+            from .maintenance import Maintenance
+            self.maintenance = Maintenance(
+                self.config.global_config, self.logger,
+                notify=self._notify_lines,
+            )
+        except Exception as e:
+            self.logger.debug(f'维护模块初始化失败（不影响录制）: {e}')
+
+    @staticmethod
+    def _notify_lines(lines):
+        """维护模块用的通知入口（后台发送，不阻塞）。"""
+        def _do():
+            try:
+                from .notify import send
+                send('DanmakuRepo 运维提醒', lines)
+            except Exception:
+                pass
+        threading.Thread(target=_do, daemon=True).start()
+
     def _resolve_state_db_path(self) -> str:
         """状态库位置。
 
@@ -379,7 +402,15 @@ class DanmakuRepo():
                             self.logger.debug(f'已清理临时文件夹: {file}')
                 except Exception as e:
                     self.logger.debug(f'清理临时文件{file}失败: {e}')
-            
+
+            # 周期性维护：日志轮转 / 磁盘水位 / 每日体检 / 索引页。
+            # tick() 内部自己按间隔判断，这里每分钟调一次开销可以忽略。
+            if self.maintenance is not None:
+                try:
+                    self.maintenance.tick()
+                except Exception as e:
+                    self.logger.debug(f'维护 tick 失败: {e}')
+
             time.sleep(REFRESH_INTERVAL)
 
     def stop(self):

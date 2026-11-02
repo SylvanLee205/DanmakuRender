@@ -45,6 +45,9 @@ notify_title.txt
 # 历史同步备份目录
 .backup-sync-*/
 
+# 录播索引页（每次生成，不入库）
+/index.html
+
 # 根目录下划线开头的临时/备份文件
 /_*
 # …但公共环境脚本必须入库：所有 .bat 都靠它找 Python

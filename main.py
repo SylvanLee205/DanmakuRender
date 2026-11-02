@@ -556,6 +556,15 @@ if __name__ == '__main__':
     logger.addHandler(console_handler)
     logger.addHandler(file_handler)
 
+    # 崩溃现场快照：把主线程/子线程未捕获异常、C 层崩溃的完整栈写进
+    # .temp/crash-*.txt。没有这个的话，线程死掉是完全静默的。
+    try:
+        from DMR import crashdump
+        if crashdump.install():
+            logger.debug('崩溃快照钩子已安装')
+    except Exception as _e:
+        logger.debug(f'崩溃快照未启用: {_e}')
+
     # 可选：进程内内存诊断（默认关闭；设 DMR_MEM_PROBE=1 启用）。
     # 启用后可用 `kill -USR1 <pid>` 随时打印内存快照，
     # `kill -USR2 <pid>` 打印并尝试把 glibc 堆空洞还给系统。

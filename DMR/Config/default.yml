@@ -666,3 +666,33 @@ recovery:
   # 用于"按月分视频"等需要长期复用同一个稿件的场景
   upload_group_expires: ~
 
+
+# ─────────────────────── 周期性维护（DMR/maintenance.py）───────────────────────
+# 每分钟检查一次"该不该干活"，每项各有自己的节奏。
+# 任何一项失败都只记 warning，不会影响录制。不想用就把 enabled 设 false。
+maintenance:
+  # 日志轮转：logs/ 下的 .log 超过天数或总量就删最旧的（今天的永远保留）
+  log_keep_days: 14
+  log_max_total_mb: 500
+
+  # 磁盘水位保护（看 DMR_DATA_ROOT 所在盘，默认就是项目盘）
+  #   warn      ：只记警告 + 每天通知一次
+  #   critical  ：立刻删「已经渲染出弹幕版」的最旧源视频，直到回到 warn 以上
+  #   emergency ：同上，并标记 paused_for_disk（新任务会被告知）
+  # 安全规则：跳过 [正在录制]、必须有对应（弹幕版）产物、只删 2 小时没动过的。
+  disk_guard:
+    enabled: true
+    warn_gb: 120
+    critical_gb: 60
+    emergency_gb: 20
+
+  # 每天定时体检（复用 Doctor.bat 的检查项；只在有严重问题时发通知）
+  doctor:
+    enabled: true
+    at: '05:00'
+
+  # 每天重建录播索引页 <项目>/index.html
+  index:
+    enabled: true
+    at: '06:00'
+

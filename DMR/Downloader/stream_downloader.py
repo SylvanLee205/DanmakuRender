@@ -604,6 +604,7 @@ class StreamDownloadTask():
             time.sleep(start_check_interval)
 
         _attempt_started = 0.0      # 本轮尝试的开始时间（用于智能退避）
+        _disk_warned = False        # 磁盘告急的提示是否已经打过（避免刷屏）
         while self.loop:
             if not self.liveapi.Onair():
                 restart_cnt = 0
@@ -621,6 +622,23 @@ class StreamDownloadTask():
                     self.sess_id = uuid(8)          # 每场直播结束后重新分配session id
                     self.segment_id = 1
                 continue
+
+            # ── 磁盘水位保护 ──────────────────────────────────────────
+            # maintenance 在「清理完仍然低于紧急线」时才会置位，所以这里不是
+            # 常规路径。只拦**新一轮**录制，正在录的这个分支根本走不到。
+            # 停录会丢内容，但不拦的话 ffmpeg 写失败同样丢内容，还会把状态库搞脏。
+            try:
+                from DMR.maintenance import is_disk_emergency
+                if is_disk_emergency():
+                    if not _disk_warned:
+                        self._pipeSend('livestart_blocked',
+                                       '磁盘空间不足，暂不开始录制（等清理/人工处理）')
+                        _disk_warned = True
+                    time.sleep(start_check_interval)
+                    continue
+                _disk_warned = False
+            except Exception:
+                pass
 
             try:
                 stop_waited = 0

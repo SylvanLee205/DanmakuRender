@@ -106,6 +106,8 @@ logs/                    DMR-*.log 日志 + dmr_state.db 状态库
 
 DMR/
   ├── paths.py           **所有路径的唯一来源**（根目录 / tools / logs / 快照…）
+  ├── maintenance.py     周期性维护：日志轮转 / 磁盘水位 / 每日体检 / 索引页
+  ├── crashdump.py       崩溃现场快照（主线程、子线程、C 层崩溃）
   ├── notify.py          开播通知（Server酱³）
   ├── __init__.py        DanmakuRepo 主类：装配组件、启动对账（reconciler）
   ├── engine.py          插件式引擎：downloader / render / uploader / cleaner 各自线程
@@ -255,6 +257,8 @@ Start_DMR.bat
 |---|---|
 | **加主播** | 复制抖音直播间链接 → 双击 `DMR-添加主播.bat`。自动取名、写配置、**热加载不用重启** |
 | **看状态** | 双击 `DMR-看实时日志.bat`，或 `python tools/dmr-status.ps1` |
+| **回看录播** | 打开项目里的 `index.html`（每天 06:00 自动重建）。想立刻生成：`python tools\build_index.py --open` |
+| **磁盘快满了** | 不用管——低于 60GB 会自动删已渲染完的源视频；低于 20GB 会暂停开新任务并发通知 |
 | **停用主播** | **两步**：① 配置挪进 `configs/temp/` ② `python tools/purge_task_state.py --apply` |
 | **重新启用** | 配置从 `configs/temp/` 挪回 `configs/`（热加载）。历史状态没了，进度从头记 |
 | **改全局配置** | 改 `configs/global.yml` → **重启 DMR** |
@@ -371,10 +375,33 @@ Start_DMR.bat                                     :: 5. 重启
 
 全部在 `tools/`，**默认都是预览模式，加 `--apply` / `--force` 才真动手**。
 
+### 自动维护（不用管，DMR 自己会做）
+
+`DMR/maintenance.py` 每分钟 tick 一次，按各自节奏干活。全部动作失败只记
+warning，**绝不影响录制**。配置在 `global.yml` 的 `maintenance:` 段。
+
+| 什么时候 | 做什么 | 为什么需要 |
+|---|---|---|
+| 每 6 小时 | **日志轮转**：删超过 14 天或总量超 500MB 的旧日志（今天的保留） | 4 个日志文件曾涨到 36MB，只增不减 |
+| 每 5 分钟 | **磁盘水位**：低于 120GB 记警告，低于 60GB 自动删「已渲染完」的最旧源视频，低于 20GB 再暂停开新任务 | 盘满了 ffmpeg 写失败 = 丢内容 + 状态库变脏 |
+| 每天 05:00 | **定时体检**：跑 `doctor.py` 的全部检查，**只有严重问题才发通知** | 出问题时人往往几天后才发现 |
+| 每天 06:00 | **重建索引页** `index.html` | 想回看时不至于翻文件夹 |
+| 崩溃时 | **现场快照** `.temp/crash-*.txt`（完整 traceback + 所有线程栈 + 日志尾部 + 内存） | 子线程崩了以前完全静默 |
+
+**磁盘清理的安全规则**（每条都对应一次真实教训）：
+跳过 `[正在录制]`、跳过 `.part`/`.ass` 等中间产物、**跳过弹幕版成品本身**、
+必须有对应的「（弹幕版）」产物才允许删、只删 2 小时没动过的、从最旧开始删。
+
+> ⚠️ 2026-11-02 实测抓到过一个 bug：判断"有没有对应弹幕版"时，
+> 弹幕版**自己**也满足条件 —— 差点把成品删光。现在先排除带「（弹幕版）」的文件。
+
+### 手动工具
+
 | 工具 | 干什么 |
 |---|---|
 | `bootstrap.py` | **首次安装 / 环境修复**：venv、依赖、ffmpeg、rclone、配置 |
 | `doctor.py` | **一键体检**，`--export` 打诊断包 |
+| `build_index.py` | 生成录播索引页 `index.html`（搜主播 / 筛日期 / 点开就播） |
 | `install_desktop_links.py` | 在桌面建 .lnk 快捷方式（`--all` 含推送脚本） |
 | `install_boot_task.py` | 注册/注销开机计划任务（运行时生成，不依赖 XML 模板） |
 | `add_room.py` | 读剪贴板链接 → 自动取名 → 写 `configs/`，热加载 |

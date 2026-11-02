@@ -329,6 +329,39 @@ def chk_startup_error():
 
 
 # ───────────────────────────── 汇总 ─────────────────────────────
+#: 全部检查项，顺序即输出顺序
+ALL_CHECKS = (chk_python, chk_deps, chk_tools, chk_dirs, chk_configs,
+              chk_state, chk_disk, chk_process, chk_tasks, chk_notify,
+              chk_logs, chk_startup_error)
+
+
+def run_checks():
+    """跑全部检查，返回 ``(lines, n_bad, n_warn)``。
+
+    ``lines`` 是 ``[(level, "标题  —  详情", hint), ...]``。
+
+    给 ``DMR/maintenance.py`` 的每日体检用 —— 那边只需要结果，
+    不关心打印格式。重复调用是安全的（每次先清空 results）。
+    """
+    results.clear()
+    for fn in ALL_CHECKS:
+        try:
+            fn()
+        except Exception as e:
+            add(WARN, f'检查项 {fn.__name__} 自身出错', repr(e), '把这条发给 AI')
+
+    lines = []
+    n_bad = n_warn = 0
+    for r in results:
+        if r['level'] == BAD:
+            n_bad += 1
+        elif r['level'] == WARN:
+            n_warn += 1
+        text = r['title'] + (f'  —  {r["detail"]}' if r['detail'] else '')
+        lines.append((r['level'], text, r['hint']))
+    return lines, n_bad, n_warn
+
+
 def render(brief=False):
     hr('体检结果')
     n_bad = n_warn = 0
@@ -414,14 +447,7 @@ def main():
     print(f'  项目: {PROJ}')
     print(f'  时间: {time.strftime("%Y-%m-%d %H:%M:%S")}')
 
-    for fn in (chk_python, chk_deps, chk_tools, chk_dirs, chk_configs,
-               chk_state, chk_disk, chk_process, chk_tasks, chk_notify,
-               chk_logs, chk_startup_error):
-        try:
-            fn()
-        except Exception as e:
-            add(WARN, f'检查项 {fn.__name__} 自身出错', repr(e), '把这条发给 AI')
-
+    run_checks()
     n_bad = render(args.brief)
     if args.export:
         export_pack()
